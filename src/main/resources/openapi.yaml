@@ -1,0 +1,46 @@
+openapi: 3.0.3
+info:
+  title: Lead Enrichment API
+  version: 1.0.0
+paths:
+  /api/v1/enrich/single:
+    post:
+      summary: Enrich a single lead
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadResponse'
+  /api/v1/enrich/batch:
+    post:
+      summary: Enrich a batch of leads
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/LeadRequest'
+      responses:
+        '202':
+          description: Batch processing started
+components:
+  schemas:
+    LeadRequest:
+      type: object
+      properties:
+        email: {type: string}
+        domain: {type: string}
+    LeadResponse:
+      type: object
+      properties:
+        email: {type: string}
+        companyName: {type: string}
+        socialLinks: {type: array, items: {type: string}}
