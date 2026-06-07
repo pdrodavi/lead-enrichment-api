@@ -15,6 +15,7 @@ public class SocialDiscoveryService {
     private static final int TIMEOUT_MS = 10_000;
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
+    @SuppressWarnings("unused")
     private static final Set<String> TRACKING_PARAMS = Set.of(
             "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
             "fbclid", "gclid", "gclsrc", "dclid", "msclkid",

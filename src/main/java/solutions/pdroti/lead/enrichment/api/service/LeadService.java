@@ -83,7 +83,6 @@ public class LeadService {
         return true; 
     }
 
-    @SuppressWarnings("unchecked")
     @Transactional 
     public Lead enrichLead(String email) {
         
@@ -106,11 +105,13 @@ public class LeadService {
             }
         }
 
+        @SuppressWarnings("null")
         var savedLead = leadRepository.save(lead);
         redisCacheService.put(email, savedLead);
         return savedLead;
     }
 
+    @SuppressWarnings("null")
     @Transactional
     public Lead enrich(String email, String domain) {
 

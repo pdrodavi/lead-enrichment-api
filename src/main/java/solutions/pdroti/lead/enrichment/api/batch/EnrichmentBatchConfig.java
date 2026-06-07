@@ -25,6 +25,7 @@ import java.util.Collections;
 @Configuration
 public class EnrichmentBatchConfig {
 
+  @SuppressWarnings("null")
   @Bean
   public RepositoryItemReader<Lead> reader(LeadRepository repository) {
     return new RepositoryItemReaderBuilder<Lead>()
@@ -42,6 +43,7 @@ public class EnrichmentBatchConfig {
     return leadService::enrichLead;
   }
 
+  @SuppressWarnings("null")
   @Bean
   public RepositoryItemWriter<Lead> writer(LeadRepository repository) {
     return new RepositoryItemWriterBuilder<Lead>().repository(repository).methodName("save").build();
@@ -56,6 +58,7 @@ public class EnrichmentBatchConfig {
     return executor;
   }
 
+  @SuppressWarnings("null")
   @Bean
   public Step enrichmentStep(JobRepository jobRepository, PlatformTransactionManager transactionManager,
       RepositoryItemReader<Lead> reader, ItemProcessor<Lead, Lead> processor, RepositoryItemWriter<Lead> writer,
@@ -64,6 +67,7 @@ public class EnrichmentBatchConfig {
         .processor(processor).writer(writer).taskExecutor(taskExecutor).build();
   }
 
+  @SuppressWarnings("null")
   @Bean
   public Job enrichmentJob(JobRepository jobRepository, Step enrichmentStep) {
     return new JobBuilder("enrichmentJob", jobRepository).start(enrichmentStep).build();

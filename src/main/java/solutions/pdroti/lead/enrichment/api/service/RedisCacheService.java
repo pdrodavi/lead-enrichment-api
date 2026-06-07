@@ -15,10 +15,12 @@ public class RedisCacheService {
         this.redisTemplate = redisTemplate;
     }
 
+    @SuppressWarnings("null")
     public void put(String key, Object value) {
         redisTemplate.opsForValue().set(key, value, 24, TimeUnit.HOURS);
     }
 
+    @SuppressWarnings("null")
     public Optional<Object> get(String key) {
         return Optional.ofNullable(redisTemplate.opsForValue().get(key));
     }

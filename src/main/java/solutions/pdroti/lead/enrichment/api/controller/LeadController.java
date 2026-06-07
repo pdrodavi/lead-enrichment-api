@@ -9,22 +9,20 @@ import org.springframework.web.bind.annotation.*;
 import solutions.pdroti.lead.enrichment.api.model.Lead;
 import solutions.pdroti.lead.enrichment.api.service.LeadService;
 import org.springframework.batch.core.Job;
-import org.springframework.batch.core.JobParametersBuilder;
 
 @RestController
 @RequestMapping("/api/v1/leads")
 public class LeadController {
 
     private final LeadService leadService;
-    private final JobLauncher jobLauncher;
-    private final Job enrichmentJob;
+    /*private final JobLauncher jobLauncher;
+    private final Job enrichmentJob;*/
 
-    public LeadController(LeadService leadService, JobLauncher jobLauncher, Job enrichmentJob) {
+    public LeadController(LeadService leadService/*, JobLauncher jobLauncher, Job enrichmentJob*/) {
         this.leadService = leadService;
-        this.jobLauncher = jobLauncher;
-        this.enrichmentJob = enrichmentJob;
+        /*this.jobLauncher = jobLauncher;
+        this.enrichmentJob = enrichmentJob;*/
     }
-
 /*    @SuppressWarnings("null")
     @PostMapping("/process")
     public String triggerJob() throws Exception {

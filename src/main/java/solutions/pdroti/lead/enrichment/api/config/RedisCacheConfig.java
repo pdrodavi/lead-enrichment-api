@@ -18,8 +18,10 @@ public class RedisCacheConfig {
 
     public static final String CACHE_LEADS = "leads";
 
-    @Bean
+    @SuppressWarnings("null")
+        @Bean
     public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
+        @SuppressWarnings("null")
         RedisCacheConfiguration cacheConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofHours(24))
                 .disableCachingNullValues()
