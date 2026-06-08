@@ -27,8 +27,8 @@ ENV REDIS_HOST=$REDIS_HOST
 ENV REDIS_PORT=$REDIS_PORT
 ENV API_KEY=$API_KEY
 ENV ENCRYPTION_SECRET=$ENCRYPTION_SECRET
-ENV PORT=$PORT
+ENV PORT=8081
 
 COPY --from=builder /build/target/*.jar app.jar
-EXPOSE $PORT
-ENTRYPOINT ["sh", "-c", "java -jar app.jar --server.port=$PORT"]
+EXPOSE 8081
+ENTRYPOINT ["sh", "-c", "java -jar app.jar --server.port=8081"]

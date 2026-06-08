@@ -4,17 +4,19 @@ services:
   # ===================== PostgreSQL =====================
   postgres:
     image: postgres:16
-    container_name: postgres-${ENV:dev}
+    container_name: postgres-${ENV:-dev}
+    networks:
+      - lead-net
     environment:
-      POSTGRES_USER: ${PG_USER:postgres}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:pgsqldev}
-      POSTGRES_DB: ${PG_DB:postgres}
+      POSTGRES_USER: ${PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-pgsqldev}
+      POSTGRES_DB: ${PG_DB:-postgres}
     ports:
-      - "${PG_PORT:5433}:5432"
+      - "${PG_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,9 +25,11 @@ services:
   # ===================== Redis =====================
   redis:
     image: redis:7-alpine
-    container_name: redis-${ENV:dev}
+    container_name: redis-${ENV:-dev}
+    networks:
+      - lead-net
     ports:
-      - "${REDIS_PORT:6379}:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -41,33 +45,40 @@ services:
     build:
       context: .
       args:
-        DB_URL: ${DB_URL:jdbc:postgresql://postgres:5432/postgres}
-        DB_USERNAME: ${DB_USERNAME:${PG_USER:postgres}}
-        DB_PASSWORD: ${DB_PASSWORD:${PG_PASSWORD:pgsqldev}}
-        REDIS_HOST: ${REDIS_HOST:redis}
-        REDIS_PORT: ${REDIS_PORT:6379}
-        API_KEY: ${API_KEY:dev-key-change-in-production}
-        ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:CHANGE_ME_32_BYTE_SECRET_KEY!}
-        PORT: ${PORT:8081}
-    container_name: lead-enrichment-api-${ENV:dev}
+        DB_URL: ${DB_URL:-jdbc:postgresql://postgres-${ENV:-dev}:5432/postgres}
+        DB_USERNAME: ${DB_USERNAME:-${PG_USER:-postgres}}
+        DB_PASSWORD: ${DB_PASSWORD:-${PG_PASSWORD:-pgsqldev}}
+        REDIS_HOST: ${REDIS_HOST:redis-${ENV:-dev}}
+        REDIS_PORT: ${REDIS_PORT:-6379}
+        API_KEY: ${API_KEY:-dev-key-change-in-production}
+        ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-CHANGE_ME_32_BYTE_SECRET_KEY!}
+        PORT: ${PORT:-8781}
+    container_name: lead-enrichment-api-${ENV:-dev}
     ports:
-      - "${PORT:8081}:${PORT:8081}"
+      - "${PORT:-8781}:8081"
     environment:
-      DB_URL: ${DB_URL:jdbc:postgresql://postgres:5432/postgres}
-      DB_USERNAME: ${DB_USERNAME:${PG_USER:postgres}}
-      DB_PASSWORD: ${DB_PASSWORD:${PG_PASSWORD:pgsqldev}}
-      REDIS_HOST: ${REDIS_HOST:redis}
-      REDIS_PORT: ${REDIS_PORT:6379}
-      API_KEY: ${API_KEY:dev-key-change-in-production}
-      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:CHANGE_ME_32_BYTE_SECRET_KEY!}
-      PORT: ${PORT:8081}
+      DB_URL: ${DB_URL:-jdbc:postgresql://postgres-${ENV:-dev}:5432/postgres}
+      DB_USERNAME: ${DB_USERNAME:-${PG_USER:-postgres}}
+      DB_PASSWORD: ${DB_PASSWORD:-${PG_PASSWORD:-pgsqldev}}
+      REDIS_HOST: ${REDIS_HOST:redis-${ENV:-dev}}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      API_KEY: ${API_KEY:-dev-key-change-in-production}
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-CHANGE_ME_32_BYTE_SECRET_KEY!}
+      PORT: ${PORT:-8081}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - lead-net
 
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  lead-net:
+    driver: bridge
+    name: lead-enrichment-api-network
