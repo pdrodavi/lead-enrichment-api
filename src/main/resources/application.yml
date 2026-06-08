@@ -1,25 +1,44 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5433/postgres
-    username: postgres
-    password: pgsqldev
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/postgres}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:pgsqldev}
   data:
     redis:
-      host: localhost
-      port: 6379
-  batch:
-    jdbc:
-      initialize-schema: always
-    job:
-      enabled: false
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   jpa:
     show-sql: true
+    format-sql: true
     hibernate:
       ddl-auto: update
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+api:
+  key: ${API_KEY:dev-key-change-in-production}
+  encryption:
+    secret: ${ENCRYPTION_SECRET:CHANGE_ME_32_BYTE_SECRET_KEY!}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+
 logging:
   level:
     root: INFO
     solutions.pdroti: INFO
+    org.springframework.web: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 server:
-  port: 8089
+  port: ${PORT:8081}

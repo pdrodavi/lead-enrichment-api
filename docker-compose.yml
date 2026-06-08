@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # ===================== PostgreSQL =====================
+  postgres:
+    image: postgres:16
+    container_name: postgres-${ENV:dev}
+    environment:
+      POSTGRES_USER: ${PG_USER:postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:pgsqldev}
+      POSTGRES_DB: ${PG_DB:postgres}
+    ports:
+      - "${PG_PORT:5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ===================== Redis =====================
+  redis:
+    image: redis:7-alpine
+    container_name: redis-${ENV:dev}
+    ports:
+      - "${REDIS_PORT:6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ===================== Lead Enrichment API =====================
+  app:
+    build:
+      context: .
+      args:
+        DB_URL: ${DB_URL:jdbc:postgresql://postgres:5432/postgres}
+        DB_USERNAME: ${DB_USERNAME:${PG_USER:postgres}}
+        DB_PASSWORD: ${DB_PASSWORD:${PG_PASSWORD:pgsqldev}}
+        REDIS_HOST: ${REDIS_HOST:redis}
+        REDIS_PORT: ${REDIS_PORT:6379}
+        API_KEY: ${API_KEY:dev-key-change-in-production}
+        ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:CHANGE_ME_32_BYTE_SECRET_KEY!}
+        PORT: ${PORT:8081}
+    container_name: lead-enrichment-api-${ENV:dev}
+    ports:
+      - "${PORT:8081}:${PORT:8081}"
+    environment:
+      DB_URL: ${DB_URL:jdbc:postgresql://postgres:5432/postgres}
+      DB_USERNAME: ${DB_USERNAME:${PG_USER:postgres}}
+      DB_PASSWORD: ${DB_PASSWORD:${PG_PASSWORD:pgsqldev}}
+      REDIS_HOST: ${REDIS_HOST:redis}
+      REDIS_PORT: ${REDIS_PORT:6379}
+      API_KEY: ${API_KEY:dev-key-change-in-production}
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:CHANGE_ME_32_BYTE_SECRET_KEY!}
+      PORT: ${PORT:8081}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

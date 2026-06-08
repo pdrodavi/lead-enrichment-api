@@ -1,2 +1,16 @@
 target
 .idea
+*.iml
+.settings
+.project
+.classpath
+.vscode
+/bin/
+/build/
+.vscode
+.github
+
+# Environment overrides (contém credenciais reais)
+application-local.yml
+application-dev.yml
+.env

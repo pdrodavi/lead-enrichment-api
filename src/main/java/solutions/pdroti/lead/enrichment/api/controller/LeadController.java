@@ -1,61 +1,67 @@
 package solutions.pdroti.lead.enrichment.api.controller;
 
 import jakarta.validation.Valid;
-
-import lombok.Getter;
-import org.springframework.batch.core.launch.JobLauncher;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import solutions.pdroti.lead.enrichment.api.model.Lead;
+import solutions.pdroti.lead.enrichment.api.dto.LeadRequest;
+import solutions.pdroti.lead.enrichment.api.dto.LeadResponse;
 import solutions.pdroti.lead.enrichment.api.service.LeadService;
-import org.springframework.batch.core.Job;
 
+import java.util.List;
+import java.util.Map;
+
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/leads")
+@RequiredArgsConstructor
 public class LeadController {
 
     private final LeadService leadService;
-    /*private final JobLauncher jobLauncher;
-    private final Job enrichmentJob;*/
 
-    public LeadController(LeadService leadService/*, JobLauncher jobLauncher, Job enrichmentJob*/) {
-        this.leadService = leadService;
-        /*this.jobLauncher = jobLauncher;
-        this.enrichmentJob = enrichmentJob;*/
-    }
-/*    @SuppressWarnings("null")
-    @PostMapping("/process")
-    public String triggerJob() throws Exception {
-        jobLauncher.run(enrichmentJob,
-                new JobParametersBuilder().addLong("time", System.currentTimeMillis()).toJobParameters());
-        return "Job started successfully";
-    }*/
-
+    /** Enriquece um lead com dados do domínio (MX, tecnologias, redes sociais, Google Dorks). */
     @PostMapping("/enrich")
-    public ResponseEntity<Lead> enrichLead(@Valid @RequestBody LeadRequest request) {
-        Lead enrichedLead = leadService.enrich(request.getEmail(), request.getDomain());
-        return ResponseEntity.ok(enrichedLead);
+    public ResponseEntity<LeadResponse> enrichLead(@Valid @RequestBody LeadRequest request) {
+        log.info("POST /enrich email={}", request.getEmail());
+        var enriched = leadService.enrich(request.getEmail(), request.getDomain());
+        return ResponseEntity.ok(LeadResponse.fromEntity(enriched));
     }
 
+    /** Lista todos os leads enriquecidos. */
+    @GetMapping
+    public ResponseEntity<List<LeadResponse>> listAll() {
+        var leads = leadService.listAll().stream()
+                .map(LeadResponse::fromEntity)
+                .toList();
+        return ResponseEntity.ok(leads);
+    }
+
+    /** Retorna lead por ID com dados de tecnologias, sociais e Dorks (persistidos). */
     @GetMapping("/{id}")
-    public ResponseEntity<Lead> getLeadById(@PathVariable String id) {
+    public ResponseEntity<LeadResponse> getLeadById(@PathVariable String id) {
         return leadService.findById(id)
-                .map(ResponseEntity::ok)
+                .map(lead -> ResponseEntity.ok(LeadResponse.fromEntity(lead)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @Getter
-    public static class LeadRequest {
-
-        private String email;
-        private String domain;
-
-        public void setEmail(String email) {
-            this.email = email;
+    /** Soft delete do lead (LGPD — direito ao esquecimento). */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Map<String, Object>> deleteLead(@PathVariable String id) {
+        boolean deleted = leadService.softDelete(id);
+        if (deleted) {
+            log.info("DELETE /{} soft deleted", id);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Lead excluído com sucesso (LGPD — direito ao esquecimento)",
+                    "id", id
+            ));
         }
-
-        public void setDomain(String domain) {
-            this.domain = domain;
-        }
+        log.warn("DELETE /{} not found", id);
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "error", "Lead não encontrado",
+                "id", id
+        ));
     }
 }
+

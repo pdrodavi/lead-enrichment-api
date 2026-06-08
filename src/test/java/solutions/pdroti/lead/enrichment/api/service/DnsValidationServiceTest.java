@@ -1,5 +1,3 @@
-/*
-
 package solutions.pdroti.lead.enrichment.api.service;
 
 
@@ -42,4 +40,3 @@ class DnsValidationServiceTest {
         assertFalse(result, "String vazia não deve possuir registros MX");
     }
 }
-*/
