@@ -4,12 +4,12 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.0</version>
+        <version>3.3.13</version>
         <relativePath/>
     </parent>
     <groupId>solutions.pdroti</groupId>
     <artifactId>lead-enrichment-api</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0</version>
     <properties>
         <java.version>17</java.version>
     </properties>
