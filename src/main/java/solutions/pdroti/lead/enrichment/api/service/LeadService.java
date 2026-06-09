@@ -1,9 +1,8 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import solutions.pdroti.lead.enrichment.api.config.RedisCacheConfig;
+import solutions.pdroti.lead.enrichment.api.dto.SocialProfileData;
 import solutions.pdroti.lead.enrichment.api.model.Lead;
 import solutions.pdroti.lead.enrichment.api.repository.LeadRepository;
 import solutions.pdroti.lead.enrichment.api.util.EmailUtils;
@@ -26,57 +25,60 @@ public class LeadService {
     private final DnsValidationService dnsValidationService;
     private final TechScraperService techScraperService;
     private final SocialDiscoveryService socialDiscoveryService;
-    private final RedisCacheService redisCacheService;
+    private final NameSearchService nameSearchService;
     private static final int DATA_RETENTION_DAYS = 365;
     private static final String DEFAULT_STATUS = "ACTIVE";
     private static final String DELETED_STATUS = "DELETED";
 
     /**
-     * Enriquece um lead com dados de domínio: cache → banco → enrichment completo.
+     * Enriquece um lead: busca por email ou nome e atualiza se existir,
+     * ou cria novo se não encontrar.
+     * Apenas o nome é obrigatório; email e domain são opcionais.
      */
     @Transactional
-    public Lead enrich(String email, String domain) {
-        log.info("Iniciando enriquecimento para: {}", maskEmail(email));
+    public Lead enrich(String email, String domain, String name) {
+        log.info("Enriquecendo lead: nome={} email={} domain={}", name, maskEmail(email), domain);
 
-        Lead cachedLead = getFromCache(email);
-        if (cachedLead != null)
-            return cachedLead;
+        Lead existing = findExistingLead(email, name);
+        if (existing != null) {
+            log.info("Lead já existe, reenriquecendo: ID={}", existing.getId());
+        }
 
-        Lead existingLead = getFromDatabase(email);
-        if (existingLead != null)
-            return existingLead;
-
-        return performFullEnrichment(email, domain);
+        return performFullEnrichment(existing, email, domain, name);
     }
 
     /**
-     * Enriquece um lead extraindo o domínio do e-mail.
+     * Enriquece um lead extraindo o domínio do e-mail (se houver).
      */
     @Transactional
     public Lead enrichLead(Lead lead) {
-        String domain = extractDomainFromEmail(lead.getEmail());
-        return enrich(lead.getEmail(), domain);
+        String domain = lead.getEmail() != null
+                ? extractDomainFromEmail(lead.getEmail())
+                : null;
+        return enrich(lead.getEmail(), domain, lead.getName());
     }
 
     /**
-     * Retorna todos os leads cadastrados.
+     * Retorna todos os leads ativos (exclui soft-deleted).
      */
     public List<Lead> listAll() {
-        return leadRepository.findAll();
+        return leadRepository.findByStatus(DEFAULT_STATUS);
     }
 
     /**
      * Busca lead por ID string (convertido internamente para Long).
+     * Retorna apenas se não estiver soft-deleted.
      */
     public Optional<Lead> findById(String id) {
-        return parseNumericId(id).flatMap(leadRepository::findById);
+        return parseNumericId(id)
+                .flatMap(leadRepository::findById)
+                .filter(lead -> !DELETED_STATUS.equals(lead.getStatus()));
     }
 
     /**
      * Soft delete: marca data/hora de exclusão e altera status.
      */
     @Transactional
-    @CacheEvict(value = RedisCacheConfig.CACHE_LEADS, key = "#id")
     public boolean softDelete(String id) {
         return parseNumericId(id)
                 .flatMap(leadRepository::findById)
@@ -85,10 +87,9 @@ public class LeadService {
     }
 
     /**
-     * Hard delete: remove fisicamente do banco e do cache.
+     * Hard delete: remove fisicamente do banco.
      */
     @Transactional
-    @CacheEvict(value = RedisCacheConfig.CACHE_LEADS, key = "#id")
     public boolean hardDelete(String id) {
         return parseNumericId(id)
                 .filter(leadRepository::existsById)
@@ -98,66 +99,114 @@ public class LeadService {
 
     // ==================== Métodos Privados ====================
 
-    /** Tenta obter lead do cache Redis (retorno com type-safe). */
-    private Lead getFromCache(String email) {
-        return redisCacheService.get(email)
-                .filter(Lead.class::isInstance)
-                .map(Lead.class::cast)
-                .map(lead -> {
-                    log.info("Cache hit para: {}", maskEmail(email));
-                    return lead;
-                })
-                .orElse(null);
-    }
-
-    /** Busca lead no banco se já estiver enriquecido e atualiza cache. */
-    private Lead getFromDatabase(String email) {
-        return leadRepository.findByEmail(email)
-                .filter(this::isLeadAlreadyEnriched)
-                .map(lead -> {
-                    log.info("Lead existente no DB: {}", maskEmail(email));
-                    initializeCollections(lead);
-                    redisCacheService.put(email, lead);
-                    return lead;
-                })
-                .orElse(null);
+    /** Busca lead existente por email (prioridade) ou nome. */
+    private Lead findExistingLead(String email, String name) {
+        if (hasText(email)) {
+            return leadRepository.findByEmail(email).orElse(null);
+        }
+        if (hasText(name)) {
+            return leadRepository.findByName(name).orElse(null);
+        }
+        return null;
     }
 
     /** Executa todas as etapas de enrichment e persiste o resultado. */
-    private Lead performFullEnrichment(String email, String domain) {
-        Lead lead = createNewLead(email, domain);
+    private Lead performFullEnrichment(Lead existing, String email, String domain, String name) {
+        Lead lead = existing != null ? existing : createNewLead(email, domain, name);
 
-        executeSafely(() -> dnsValidationService.hasMxRecord(domain),
-                lead::setMxStatus, email);
+        // Atualiza campos caso exista
+        lead.setEmail(email);
+        lead.setDomain(domain);
+        lead.setName(name);
+        lead.setCreatedAt(LocalDateTime.now());
 
-        executeSafely(() -> techScraperService.scrapeTechnologies(domain),
-                lead::setTechnologies, email,
-                List.of("TechScrapeError"));
+        String logId = maskEmail(email);
+        if (logId == null) logId = name;
 
-        executeSafely(() -> socialDiscoveryService.discoverSocialLinks(domain),
-                links -> lead.setSocialLinks(links), email,
-                List.<String>of());
+        // Reseta dados de enriquecimento anterior (para reenriquecer limpo)
+        lead.setMxStatus(false);
+        lead.setTechnologies(null);
+        lead.setSocialLinks(null);
+        lead.setSocialProfileSummaries(null);
+        lead.setExposedEmails(null);
+        lead.setExposedPhones(null);
+        lead.setExposedAdminPaths(null);
+        lead.setExposedDocuments(null);
+        lead.setExposedConfigFiles(null);
+        lead.setNameMentions(null);
+        lead.setDorkFindings(0);
 
-        // Enriquecimento adicional com Google Dorks
-        enrichWithDorks(lead, domain);
+        if (hasText(domain)) {
+            executeSafely(() -> dnsValidationService.hasMxRecord(domain),
+                    lead::setMxStatus, logId);
+
+            lead.setTechnologies(scrapeSafely(
+                    () -> techScraperService.scrapeTechnologies(domain)));
+
+            List<String> socialLinks = scrapeSafely(
+                    () -> socialDiscoveryService.discoverSocialLinks(domain));
+            lead.setSocialLinks(socialLinks);
+            if (!socialLinks.isEmpty()) {
+                lead.setSocialProfileSummaries(
+                        socialDiscoveryService.scrapeSocialProfiles(socialLinks)
+                                .stream().map(SocialProfileData::toSummary).toList()
+                );
+            }
+
+            enrichWithDorks(lead, domain);
+
+            // Só persiste se o nome completo for encontrado no HTML do domínio
+            boolean fullNameFound = lead.getNameMentions() != null
+                    && lead.getNameMentions().stream()
+                            .anyMatch(m -> m.startsWith("Nome completo encontrado"));
+            if (!fullNameFound) {
+                String msg = "Nome \"" + name + "\" não encontrado no domínio " + domain;
+                log.warn(msg);
+                throw new IllegalArgumentException(msg);
+            }
+        } else {
+            // Sem domínio — busca pelo nome no DuckDuckGo
+            log.info("Sem domínio — buscando '{}' no DuckDuckGo", name);
+
+            lead.setSocialLinks(scrapeSafely(
+                    () -> nameSearchService.searchSocialLinks(name)));
+
+            List<String> emails = scrapeSafely(
+                    () -> nameSearchService.searchEmails(name));
+            lead.setExposedEmails(emails);
+            if (!emails.isEmpty()) {
+                lead.setDorkFindings(emails.size());
+            }
+
+            // Scrapeia perfis sociais encontrados na busca
+            if (!lead.getSocialLinks().isEmpty()) {
+                lead.setSocialProfileSummaries(
+                        socialDiscoveryService.scrapeSocialProfiles(lead.getSocialLinks())
+                                .stream().map(SocialProfileData::toSummary).toList()
+                );
+            }
+
+            // Verifica se o nome aparece nos resultados
+            lead.setNameMentions(scrapeSafely(
+                    () -> nameSearchService.searchNameMentions(name)));
+        }
 
         Lead savedLead = leadRepository.save(lead);
-        initializeCollections(savedLead);
-        redisCacheService.put(email, savedLead);
-
-        log.info("Lead enriquecido: {}", maskEmail(email));
+        log.info("Lead enriquecido: {}", logId);
         return savedLead;
     }
 
-    /** Enriquece com dados de Google Dorks (emails, docs expostos, info pública). */
+    /** Enriquece com dados de Google Dorks (emails, docs expostos, info pública, nome). */
     private void enrichWithDorks(Lead lead, String domain) {
         try {
-            var dorkResult = techScraperService.scanDorks(domain);
-            lead.setExposedEmails(dorkResult.exposedEmails());
-            lead.setExposedPhones(dorkResult.exposedPhones());
-            lead.setExposedAdminPaths(dorkResult.exposedAdminPaths());
-            lead.setExposedDocuments(dorkResult.exposedDocuments());
-            lead.setExposedConfigFiles(dorkResult.exposedConfigFiles());
+            String name = lead.getName();
+            var dorkResult = techScraperService.scanDorks(domain, name);
+            lead.setExposedEmails(toMutable(dorkResult.exposedEmails()));
+            lead.setExposedPhones(toMutable(dorkResult.exposedPhones()));
+            lead.setExposedAdminPaths(toMutable(dorkResult.exposedAdminPaths()));
+            lead.setExposedDocuments(toMutable(dorkResult.exposedDocuments()));
+            lead.setExposedConfigFiles(toMutable(dorkResult.exposedConfigFiles()));
+            lead.setNameMentions(toMutable(dorkResult.nameMentions()));
             lead.setDorkFindings(dorkResult.totalFindings());
             if (dorkResult.totalFindings() > 0) {
                 log.info("Dorks encontrou {} itens para {}", dorkResult.totalFindings(), domain);
@@ -167,49 +216,33 @@ public class LeadService {
         }
     }
 
-    /**
-     * Verifica se o lead já passou por enrichment (tecnologias, social links
-     * ou dorks presentes).
-     */
-    private boolean isLeadAlreadyEnriched(Lead lead) {
-        return hasData(lead.getTechnologies())
-                || hasData(lead.getSocialLinks())
-                || hasData(lead.getExposedEmails());
-    }
-
-    private static boolean hasData(List<?> list) {
-        return list != null && !list.isEmpty();
-    }
-
-    /** Cria lead com valores padrão (consentimento, retenção LGPD, status). */
-    private Lead createNewLead(String email, String domain) {
+    /** Cria lead com valores padrão (consentimento, retenção LGPD, status, nome). */
+    private Lead createNewLead(String email, String domain, String name) {
         LocalDateTime now = LocalDateTime.now();
         return Lead.builder()
-                .email(email).domain(domain)
+                .email(email).domain(domain).name(name)
                 .consentGiven(true).consentDate(now)
                 .dataRetentionUntil(now.plusDays(DATA_RETENTION_DAYS))
                 .createdAt(now).status(DEFAULT_STATUS)
                 .build();
     }
 
-    /** Marca o lead como deletado (soft delete) e limpa cache. */
+    /** Marca o lead como deletado (soft delete). */
     private boolean performSoftDelete(Lead lead) {
         lead.setDeletedAt(LocalDateTime.now());
         lead.setStatus(DELETED_STATUS);
         leadRepository.save(lead);
-        redisCacheService.evict(lead.getEmail());
         log.info("Lead soft deleted: ID={}", lead.getId());
         return true;
     }
 
-    /** Remove lead do banco pelo ID (hard delete) e limpa cache. */
+    /** Remove lead do banco pelo ID (hard delete). */
     private boolean performHardDelete(Long id) {
         var lead = leadRepository.findById(id);
         if (lead.isEmpty()) {
             log.warn("Lead não encontrado para hard delete: ID={}", id);
             return false;
         }
-        redisCacheService.evict(lead.get().getEmail());
         leadRepository.deleteById(id);
         log.info("Lead hard deleted: ID={}", id);
         return true;
@@ -219,42 +252,24 @@ public class LeadService {
      * Executa um supplier e aplica o resultado via setter com fallback em caso de
      * erro.
      */
-    private <T> void executeSafely(Supplier<T> supplier, Consumer<T> setter, String email) {
-        executeSafely(supplier, setter, email, null);
+    private <T> void executeSafely(Supplier<T> supplier, Consumer<T> setter, String logId) {
+        executeSafely(supplier, setter, logId, null);
     }
 
     /**
      * Executa um supplier e aplica o resultado via setter com fallback em caso de
      * erro.
      */
-    private <T> void executeSafely(Supplier<T> supplier, Consumer<T> setter, String email, T fallback) {
+    private <T> void executeSafely(Supplier<T> supplier, Consumer<T> setter, String logId, T fallback) {
         try {
             T result = supplier.get();
             setter.accept(result != null ? result : fallback);
         } catch (Exception e) {
-            log.warn("Erro para {}: {}", maskEmail(email), e.getMessage());
+            log.warn("Erro para {}: {}", logId, e.getMessage());
             if (fallback != null) {
                 setter.accept(fallback);
             }
         }
-    }
-
-    /**
-     * Substitui coleções gerenciadas pelo Hibernate por ArrayList comuns,
-     * evitando proxies Hibernate durante serialização JSON para o Redis.
-     */
-    private void initializeCollections(Lead lead) {
-        lead.setTechnologies(copyList(lead.getTechnologies()));
-        lead.setSocialLinks(copyList(lead.getSocialLinks()));
-        lead.setExposedEmails(copyList(lead.getExposedEmails()));
-        lead.setExposedPhones(copyList(lead.getExposedPhones()));
-        lead.setExposedAdminPaths(copyList(lead.getExposedAdminPaths()));
-        lead.setExposedDocuments(copyList(lead.getExposedDocuments()));
-        lead.setExposedConfigFiles(copyList(lead.getExposedConfigFiles()));
-    }
-
-    private static <T> List<T> copyList(List<T> list) {
-        return list != null ? new java.util.ArrayList<>(list) : java.util.Collections.emptyList();
     }
 
     /** Extrai domínio do e-mail (parte após @). */
@@ -263,6 +278,30 @@ public class LeadService {
             throw new IllegalArgumentException("Email inválido: " + email);
         }
         return email.substring(email.indexOf("@") + 1);
+    }
+
+    /** Retorna true se a string não for nula nem blank. */
+    private static boolean hasText(String s) {
+        return s != null && !s.isBlank();
+    }
+
+    /**
+     * Executa supplier de lista com try-catch e converte resultado em ArrayList mutável.
+     * Evita UnsupportedOperationException do Hibernate com listas imutáveis.
+     */
+    private static List<String> scrapeSafely(java.util.function.Supplier<List<String>> supplier) {
+        try {
+            List<String> result = supplier.get();
+            return result != null ? new java.util.ArrayList<>(result) : new java.util.ArrayList<>();
+        } catch (Exception e) {
+            log.warn("Erro ao buscar dados: {}", e.getMessage());
+            return new java.util.ArrayList<>();
+        }
+    }
+
+    /** Converte lista imutável em mutável para o Hibernate persistir. */
+    private static <T> List<T> toMutable(List<T> list) {
+        return list != null ? new java.util.ArrayList<>(list) : new java.util.ArrayList<>();
     }
 
     /** Converte ID string para Long com log em caso de formato inválido. */
@@ -277,6 +316,6 @@ public class LeadService {
 
     /** Ofusca e-mail para logging (delega ao utilitário). */
     private String maskEmail(String email) {
-        return EmailUtils.mask(email);
+        return email != null ? EmailUtils.mask(email) : null;
     }
 }

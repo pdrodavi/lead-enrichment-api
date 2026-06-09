@@ -24,8 +24,8 @@ public class LeadController {
     /** Enriquece um lead com dados do domínio (MX, tecnologias, redes sociais, Google Dorks). */
     @PostMapping("/enrich")
     public ResponseEntity<LeadResponse> enrichLead(@Valid @RequestBody LeadRequest request) {
-        log.info("POST /enrich email={}", request.getEmail());
-        var enriched = leadService.enrich(request.getEmail(), request.getDomain());
+        log.info("POST /enrich email={} name={}", request.getEmail(), request.getName());
+        var enriched = leadService.enrich(request.getEmail(), request.getDomain(), request.getName());
         return ResponseEntity.ok(LeadResponse.fromEntity(enriched));
     }
 

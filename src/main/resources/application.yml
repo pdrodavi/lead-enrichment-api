@@ -1,15 +1,13 @@
 spring:
+  application:
+    name: lead-enrichment-api
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5433/postgres}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:pgsqldev}
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
   jpa:
-    show-sql: true
-    format-sql: true
+    show-sql: false
+    format-sql: false
     hibernate:
       ddl-auto: update
   jackson:
@@ -17,9 +15,9 @@ spring:
       write-dates-as-timestamps: false
 
 api:
-  key: ${API_KEY:dev-key-change-in-production}
+  key: ${API_KEY:b6vxAgj5KG5HPGCKlQQ7}
   encryption:
-    secret: ${ENCRYPTION_SECRET:CHANGE_ME_32_BYTE_SECRET_KEY!}
+    secret: ${ENCRYPTION_SECRET:f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=}
 
 management:
   endpoints:
@@ -41,4 +39,4 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 server:
-  port: 8081
+  port: 8081  

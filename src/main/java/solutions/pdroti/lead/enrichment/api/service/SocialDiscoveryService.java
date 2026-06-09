@@ -3,12 +3,18 @@ package solutions.pdroti.lead.enrichment.api.service;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Service;
+import solutions.pdroti.lead.enrichment.api.dto.SocialProfileData;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 @Slf4j
@@ -140,5 +146,121 @@ public class SocialDiscoveryService {
             return "/";
         }
         return path.endsWith("/") ? path : path + "/";
+    }
+
+    // ========== Scraping de perfis de redes sociais ==========
+
+    /** Mapa de identificadores de domínio → nome da plataforma. */
+    private static final Map<String, String> PLATFORM_NAMES = new LinkedHashMap<>();
+    static {
+        PLATFORM_NAMES.put("github.com", "GitHub");
+        PLATFORM_NAMES.put("gitlab.com", "GitLab");
+        PLATFORM_NAMES.put("bitbucket.org", "Bitbucket");
+        PLATFORM_NAMES.put("linkedin.com", "LinkedIn");
+        PLATFORM_NAMES.put("instagram.com", "Instagram");
+        PLATFORM_NAMES.put("facebook.com", "Facebook");
+        PLATFORM_NAMES.put("fb.com", "Facebook");
+        PLATFORM_NAMES.put("twitter.com", "X (Twitter)");
+        PLATFORM_NAMES.put("x.com", "X (Twitter)");
+        PLATFORM_NAMES.put("youtube.com", "YouTube");
+        PLATFORM_NAMES.put("youtu.be", "YouTube");
+        PLATFORM_NAMES.put("tiktok.com", "TikTok");
+        PLATFORM_NAMES.put("medium.com", "Medium");
+        PLATFORM_NAMES.put("behance.net", "Behance");
+        PLATFORM_NAMES.put("dribbble.com", "Dribbble");
+        PLATFORM_NAMES.put("twitch.tv", "Twitch");
+        PLATFORM_NAMES.put("reddit.com", "Reddit");
+        PLATFORM_NAMES.put("stackoverflow.com", "Stack Overflow");
+        PLATFORM_NAMES.put("pinterest.com", "Pinterest");
+        PLATFORM_NAMES.put("calendly.com", "Calendly");
+        PLATFORM_NAMES.put("linktr.ee", "Linktree");
+        PLATFORM_NAMES.put("threads.net", "Threads");
+        PLATFORM_NAMES.put("slideshare.net", "SlideShare");
+        PLATFORM_NAMES.put("scribd.com", "Scribd");
+        PLATFORM_NAMES.put("issuu.com", "Issuu");
+        PLATFORM_NAMES.put("discord.com", "Discord");
+        PLATFORM_NAMES.put("discord.gg", "Discord");
+        PLATFORM_NAMES.put("telegram.org", "Telegram");
+        PLATFORM_NAMES.put("t.me", "Telegram");
+        PLATFORM_NAMES.put("whatsapp.com", "WhatsApp");
+    }
+
+    /**
+     * Tenta fazer scraping de cada URL de rede social encontrada
+     * e retorna dados estruturados (título, descrição). Erros são
+     * ignorados silenciosamente — cada perfil que falhar é pulado.
+     */
+    public List<SocialProfileData> scrapeSocialProfiles(List<String> socialUrls) {
+        if (socialUrls == null || socialUrls.isEmpty()) {
+            return List.of();
+        }
+
+        List<SocialProfileData> results = new ArrayList<>();
+
+        for (String url : socialUrls) {
+            try {
+                String platform = identifyPlatform(url);
+                Document doc = fetchSocialPage(url);
+                String title = extractPageTitle(doc);
+                String description = extractMetaDescription(doc);
+
+                results.add(new SocialProfileData(url, platform, title, description));
+                log.info("Perfil scrapy: {} — {}", platform, title);
+            } catch (Exception e) {
+                log.debug("Falha ao scrapear {}: {}", url, e.getMessage());
+            }
+        }
+
+        return List.copyOf(results);
+    }
+
+    /** Identifica o nome da plataforma a partir da URL. */
+    private String identifyPlatform(String url) {
+        String lower = url.toLowerCase();
+        return PLATFORM_NAMES.entrySet().stream()
+                .filter(e -> lower.contains(e.getKey()))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse("Rede Social");
+    }
+
+    /** Faz fetch da página social com User-Agent realista. */
+    private Document fetchSocialPage(String url) throws IOException {
+        return Jsoup.connect(url)
+                .userAgent(USER_AGENT)
+                .timeout(TIMEOUT_MS)
+                .followRedirects(true)
+                .get();
+    }
+
+    /** Extrai o título da página. */
+    private String extractPageTitle(Document doc) {
+        return Optional.ofNullable(doc.title())
+                .map(String::strip)
+                .filter(s -> !s.isBlank())
+                .orElse(null);
+    }
+
+    /** Extrai a meta description ou og:description. */
+    private String extractMetaDescription(Document doc) {
+        // Tenta og:description primeiro (mais descritivo)
+        Element ogDesc = doc.selectFirst("meta[property=og:description]");
+        if (ogDesc != null) {
+            String content = ogDesc.attr("content");
+            if (content != null && !content.isBlank()) {
+                return content.strip();
+            }
+        }
+
+        // Fallback para meta description padrão
+        Element metaDesc = doc.selectFirst("meta[name=description]");
+        if (metaDesc != null) {
+            String content = metaDesc.attr("content");
+            if (content != null && !content.isBlank()) {
+                return content.strip();
+            }
+        }
+
+        return null;
     }
 }

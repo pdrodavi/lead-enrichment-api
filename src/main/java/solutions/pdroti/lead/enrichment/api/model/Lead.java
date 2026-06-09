@@ -37,6 +37,7 @@ public class Lead implements Serializable {
     // === Dados de domínio (enriquecidos) ===
 
     private String domain;
+    private String name;
     private boolean mxStatus;
     private String status;
 
@@ -45,6 +46,9 @@ public class Lead implements Serializable {
 
     @ElementCollection(fetch = FetchType.EAGER)
     private List<String> socialLinks;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    private List<String> socialProfileSummaries;
 
     // === Google Dorks — dados de info exposta ===
 
@@ -64,6 +68,9 @@ public class Lead implements Serializable {
     private List<String> exposedConfigFiles;
 
     private int dorkFindings;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    private List<String> nameMentions;
 
     // === LGPD — consentimento e retenção ===
 
@@ -87,6 +94,9 @@ public class Lead implements Serializable {
     public String getDomain() { return domain; }
     public void setDomain(String domain) { this.domain = domain; }
 
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
     public boolean getMxStatus() { return mxStatus; }
     public void setMxStatus(boolean mxValid) { this.mxStatus = mxValid; }
 
@@ -98,6 +108,11 @@ public class Lead implements Serializable {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public List<String> getSocialProfileSummaries() { return socialProfileSummaries; }
+    public void setSocialProfileSummaries(List<String> socialProfileSummaries) {
+        this.socialProfileSummaries = socialProfileSummaries;
+    }
 
     public List<String> getExposedEmails() { return exposedEmails; }
     public void setExposedEmails(List<String> exposedEmails) { this.exposedEmails = exposedEmails; }
@@ -116,6 +131,9 @@ public class Lead implements Serializable {
 
     public int getDorkFindings() { return dorkFindings; }
     public void setDorkFindings(int dorkFindings) { this.dorkFindings = dorkFindings; }
+
+    public List<String> getNameMentions() { return nameMentions; }
+    public void setNameMentions(List<String> nameMentions) { this.nameMentions = nameMentions; }
 
     public Boolean isConsentGiven() { return consentGiven; }
     public void setConsentGiven(Boolean consentGiven) { this.consentGiven = consentGiven; }

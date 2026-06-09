@@ -494,7 +494,7 @@ public class TechScraperService {
     /**
      * Executa varredura Google Dorks no HTML e retorna informações expostas.
      */
-    public DorkScanResult scanDorks(String domain) {
+    public DorkScanResult scanDorks(String domain, String name) {
         if (domain == null || domain.isBlank()) {
             return DorkScanResult.empty();
         }
@@ -513,23 +513,51 @@ public class TechScraperService {
             List<String> errors = scanErrorMessages(lowerHtml);
             List<String> logs = scanLogFiles(lowerHtml);
             List<String> dbInfo = scanDatabaseInfo(lowerHtml);
+            List<String> nameMentions = scanNameMentions(lowerHtml, name);
 
             int total = emails.size() + phones.size() + adminPaths.size()
                     + documents.size() + configFiles.size() + backups.size()
-                    + errors.size() + logs.size() + dbInfo.size();
+                    + errors.size() + logs.size() + dbInfo.size() + nameMentions.size();
 
-            log.info("Dorks scan para {}: {} achados ({} emails, {} phones, {} admin, {} docs)",
-                    domain, total, emails.size(), phones.size(), adminPaths.size(), documents.size());
+            log.info("Dorks scan para {}: {} achados ({} emails, {} phones, {} admin, {} docs, {} name)",
+                    domain, total, emails.size(), phones.size(), adminPaths.size(), documents.size(), nameMentions.size());
 
             return new DorkScanResult(
                     emails, phones, adminPaths, documents, configFiles, backups,
-                    errors, logs, dbInfo, Map.of(), List.of(), total
+                    errors, logs, dbInfo, Map.of(), List.of(), nameMentions, total
             );
 
         } catch (Exception e) {
             log.warn("Dorks scan falhou para {}: {}", domain, e.getMessage());
             return DorkScanResult.empty();
         }
+    }
+
+    /**
+     * Escaneia menções ao nome da pessoa no HTML da página.
+     * Divide o nome em partes (ex: "João Silva" → ["joão", "silva"])
+     * e verifica se cada parte aparece no texto.
+     */
+    private static List<String> scanNameMentions(String lowerHtml, String name) {
+        if (name == null || name.isBlank()) return List.of();
+
+        List<String> mentions = new java.util.ArrayList<>();
+
+        // Verifica o nome completo
+        String fullName = name.toLowerCase().strip();
+        if (lowerHtml.contains(fullName)) {
+            mentions.add("Nome completo encontrado: " + name);
+        }
+
+        // Verifica partes do nome individualmente
+        String[] parts = fullName.split("\\s+");
+        for (String part : parts) {
+            if (part.length() > 2 && lowerHtml.contains(part)) {
+                mentions.add("Parte do nome encontrada: " + part);
+            }
+        }
+
+        return List.copyOf(mentions);
     }
 
     /** Escaneia e-mails expostos no HTML. */

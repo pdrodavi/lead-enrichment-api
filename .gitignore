@@ -7,7 +7,6 @@ target
 .vscode
 /bin/
 /build/
-.vscode
 .github
 
 # Environment overrides (contém credenciais reais)

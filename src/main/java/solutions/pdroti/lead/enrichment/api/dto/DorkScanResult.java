@@ -19,13 +19,14 @@ public record DorkScanResult(
         List<String> exposedDatabaseInfo,
         Map<String, List<String>> serverHeaders,
         List<String> certificateEmails,
+        List<String> nameMentions,
         int totalFindings
 ) {
     public static DorkScanResult empty() {
         return new DorkScanResult(
                 List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), Map.of(),
-                List.of(), 0
+                List.of(), List.of(), 0
         );
     }
 }

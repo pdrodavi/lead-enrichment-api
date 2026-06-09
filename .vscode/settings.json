@@ -2,5 +2,6 @@
     "chat.agentSkillsLocations": {
         "github:pdrodavi/.github": true,
         ".github/agents": true
-    }
+    },
+    "java.configuration.updateBuildConfiguration": "interactive"
 }

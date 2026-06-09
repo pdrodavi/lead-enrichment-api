@@ -12,6 +12,9 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     /** Busca lead pelo e-mail (usado no fluxo de enrichment). */
     Optional<Lead> findByEmail(String email);
 
+    /** Busca lead pelo nome (usado para atualizar lead existente). */
+    Optional<Lead> findByName(String name);
+
     /** Busca todos os leads com determinado status (ex: ACTIVE, DELETED). */
     List<Lead> findByStatus(String status);
 }

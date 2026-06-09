@@ -22,24 +22,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ===================== Redis =====================
-  redis:
-    image: redis:7-alpine
-    container_name: redis-${ENV:-dev}
-    networks:
-      - lead-net
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
   # ===================== Lead Enrichment API =====================
   app:
     build:
@@ -48,10 +30,8 @@ services:
         DB_URL: ${DB_URL:-jdbc:postgresql://postgres-${ENV:-dev}:5432/postgres}
         DB_USERNAME: ${DB_USERNAME:-${PG_USER:-postgres}}
         DB_PASSWORD: ${DB_PASSWORD:-${PG_PASSWORD:-pgsqldev}}
-        REDIS_HOST: ${REDIS_HOST:-redis-${ENV:-dev}}
-        REDIS_PORT: ${REDIS_PORT:-6379}
-        API_KEY: ${API_KEY:-dev-key-change-in-production}
-        ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-CHANGE_ME_32_BYTE_SECRET_KEY!}
+        API_KEY: ${API_KEY:-b6vxAgj5KG5HPGCKlQQ7}
+        ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=}
         PORT: ${PORT:-8781}
     container_name: lead-enrichment-api-${ENV:-dev}
     ports:
@@ -60,15 +40,11 @@ services:
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres-${ENV:-dev}:5432/postgres}
       DB_USERNAME: ${DB_USERNAME:-${PG_USER:-postgres}}
       DB_PASSWORD: ${DB_PASSWORD:-${PG_PASSWORD:-pgsqldev}}
-      REDIS_HOST: ${REDIS_HOST:-redis-${ENV:-dev}}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      API_KEY: ${API_KEY:-dev-key-change-in-production}
-      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-CHANGE_ME_32_BYTE_SECRET_KEY!}
+      API_KEY: ${API_KEY:-b6vxAgj5KG5HPGCKlQQ7}
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=}
       PORT: ${PORT:-8081}
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -76,7 +52,6 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
 
 networks:
   lead-net:

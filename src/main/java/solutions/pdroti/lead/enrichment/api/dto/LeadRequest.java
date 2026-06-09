@@ -9,11 +9,14 @@ import lombok.Data;
 @Schema(description = "Requisição para enriquecimento de um lead")
 public class LeadRequest {
 
-    @NotBlank @Email
-    @Schema(description = "Email do lead para enriquecimento", example = "contato@exemplo.com")
+    @Email
+    @Schema(description = "Email do lead para enriquecimento (opcional)", example = "contato@exemplo.com")
     private String email;
 
-    @NotBlank
-    @Schema(description = "Domínio para validação DNS e scraping", example = "exemplo.com")
+    @Schema(description = "Domínio para validação DNS e scraping (opcional)", example = "exemplo.com")
     private String domain;
+
+    @NotBlank
+    @Schema(description = "Nome da pessoa para enriquecimento e buscas", example = "João Silva")
+    private String name;
 }

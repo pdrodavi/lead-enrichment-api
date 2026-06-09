@@ -14,6 +14,9 @@ public record LeadResponse(
         @Schema(description = "Email mascarado (LGPD)", example = "con***@exemplo.com")
         String emailMasked,
 
+        @Schema(description = "Nome da pessoa", example = "João Silva")
+        String name,
+
         @Schema(description = "Domínio validado", example = "exemplo.com")
         String domain,
 
@@ -28,6 +31,9 @@ public record LeadResponse(
 
         @Schema(description = "Links de redes sociais encontrados")
         List<String> socialLinks,
+
+        @Schema(description = "Resumo dos dados scrapy dos perfis de redes sociais")
+        List<String> socialProfileSummaries,
 
         // === Dados do Google Dorks (persistidos) ===
 
@@ -46,6 +52,9 @@ public record LeadResponse(
         @Schema(description = "Arquivos de configuração expostos (.env, .sql, .bak)")
         List<String> exposedConfigFiles,
 
+        @Schema(description = "Menções ao nome da pessoa encontradas na página")
+        List<String> nameMentions,
+
         @Schema(description = "Total de achados no Dorks scan")
         int dorkFindings
 ) {
@@ -55,16 +64,19 @@ public record LeadResponse(
         return new LeadResponse(
                 lead.getId(),
                 maskEmail(lead.getEmail()),
+                lead.getName(),
                 lead.getDomain(),
                 lead.getMxStatus(),
                 lead.getStatus(),
                 lead.getTechnologies(),
                 lead.getSocialLinks(),
+                lead.getSocialProfileSummaries(),
                 lead.getExposedEmails(),
                 lead.getExposedPhones(),
                 lead.getExposedAdminPaths(),
                 lead.getExposedDocuments(),
                 lead.getExposedConfigFiles(),
+                lead.getNameMentions(),
                 lead.getDorkFindings()
         );
     }
