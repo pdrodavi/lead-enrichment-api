@@ -1,62 +1,66 @@
 # Lead Enrichment API
 
-API inteligente para enriquecimento de leads B2B.  
-Dado um e-mail e domínio, a API descobre dados públicos como tecnologias do site, redes sociais, 
-metadados da página e informações de segurança expostas (Google Dorks) — tudo com conformidade LGPD.
+API para enriquecimento de leads com dados públicos.  
+A partir de um **nome** (obrigatório), e opcionalmente um e-mail e domínio, a API descobre:
+
+- Tecnologias usadas no site do domínio (CMS, frameworks, analytics, CDN)
+- Perfis em redes sociais (GitHub, LinkedIn, Instagram, etc.)
+- Dados extraídos dos perfis sociais (título, descrição)
+- Informações de segurança expostas via Google Dorks (e-mails, telefones, documentos, configs)
+- Validação de registro MX (DNS)
+- Busca pelo nome no DuckDuckGo quando nenhum domínio é informado
+
+Tudo com conformidade LGPD (e-mails criptografados e mascarados, soft-delete).
 
 ---
 
 ## Stack
 
-| Tecnologia | Versão | Função |
-|---|---|---|
-| **Java** | 17 | Runtime |
-| **Spring Boot** | 3.3.x | Framework web |
-| **PostgreSQL** | — | Armazenamento principal |
-| **Redis** | — | Cache distribuído (Cache-Aside, TTL 24h) |
-| **Jsoup** | — | HTML parsing e web scraping |
-| **dnsjava** | — | Consultas DNS (registros MX) |
-| **Hibernate** | 6.x | JPA / ORM |
-| **SpringDoc OpenAPI** | — | Swagger UI em `/swagger-ui.html` |
-| **Spring Actuator** | — | Health check `/actuator/health` |
+| Tecnologia | Função |
+|---|---|
+| **Java 17** | Runtime |
+| **Spring Boot 3.3.x** | Framework web / JPA / Actuator |
+| **PostgreSQL 16** | Banco de dados relacional |
+| **Hibernate 6.x** | ORM |
+| **Jsoup** | Scraping HTML (sites e DuckDuckGo) |
+| **dnsjava** | Consultas DNS (registro MX) |
+| **SpringDoc OpenAPI** | Swagger UI em `/swagger-ui.html` |
+| **Spring Actuator** | Health check em `/actuator/health` |
+| **Lombok** | Redução de boilerplate |
 
 ---
 
 ## Requisitos
 
 - JDK 17+
-- PostgreSQL (porta 5433)
-- Redis (porta 6379)
+- Docker + Docker Compose
 - Maven 3.8+
 
-## Configuração
+---
 
-| Variável | Descrição | Default (dev) |
+## Variáveis de Ambiente
+
+| Variável | Descrição | Default |
 |---|---|---|
 | `DB_URL` | URL do PostgreSQL | `jdbc:postgresql://localhost:5433/postgres` |
 | `DB_USERNAME` | Usuário do DB | `postgres` |
 | `DB_PASSWORD` | Senha do DB | `pgsqldev` |
-| `REDIS_HOST` | Host do Redis | `localhost` |
-| `REDIS_PORT` | Porta do Redis | `6379` |
-| `API_KEY` | Chave de API (header `X-API-KEY`) | `dev-key-change-in-production` |
-| `ENCRYPTION_SECRET` | Chave AES-GCM para criptografia de PII | `CHANGE_ME_32_BYTE_SECRET_KEY!` |
-| `PORT` | Porta do servidor | `8089` |
+| `API_KEY` | Chave de API (header `X-API-KEY`) | `b6vxAgj5KG5HPGCKlQQ7` |
+| `ENCRYPTION_SECRET` | Chave AES para criptografia de e-mails | `f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=` |
+| `PORT` | Porta do servidor | `8081` |
+| `PG_USER` | Usuário PostgreSQL (Docker) | `postgres` |
+| `PG_PASSWORD` | Senha PostgreSQL (Docker) | `pgsqldev` |
+| `PG_DB` | Nome do banco (Docker) | `postgres` |
+| `PG_PORT` | Porta exposta do PostgreSQL | `5433` |
+| `ENV` | Sufixo de ambiente | `dev` |
+
+---
 
 ## Execução
 
-### Local (sem Docker)
-
-```bash
-# Certifique-se de ter PostgreSQL e Redis rodando localmente
-mvn spring-boot:run
-
-# Ou com variáveis customizadas
-DB_PASSWORD=... API_KEY=... ENCRYPTION_SECRET=... mvn spring-boot:run
-```
-
 ### Docker Compose (recomendado)
 
-Sobe todos os serviços (PostgreSQL 16, Redis 7, aplicação) com um comando:
+Sobe PostgreSQL 16 + aplicação:
 
 ```bash
 # Build + Start
@@ -71,17 +75,185 @@ docker compose logs -f app
 # Parar tudo
 docker compose down
 
-# Parar tudo e remover volumes (dados)
+# Parar tudo e remover dados do banco
 docker compose down -v
 ```
 
-### Variáveis de ambiente no Docker
-
-Todas as variáveis podem ser sobrescritas via `.env` ou inline:
+### Local (sem Docker)
 
 ```bash
-# Usando .env file
-echo "PG_PASSWORD=senha_segura" >> .env
+# PostgreSQL precisa estar rodando na porta 5433
+mvn spring-boot:run -Dmaven.test.skip=true
+
+# Ou com variáveis customizadas
+API_KEY=... ENCRYPTION_SECRET=... mvn spring-boot:run -Dmaven.test.skip=true
+```
+
+---
+
+## Autenticação
+
+Todas as requisições exigem o header:
+
+```
+X-API-KEY: b6vxAgj5KG5HPGCKlQQ7
+```
+
+---
+
+## Endpoints
+
+### `POST /api/v1/leads/enrich` — Enriquecer um lead
+
+Enriquece um lead com dados públicos. Apenas o **nome** é obrigatório.
+
+**Requisição:**
+
+```json
+{
+  "name": "João Silva",
+  "email": "joao@exemplo.com",
+  "domain": "exemplo.com"
+}
+```
+
+| Campo | Obrigatório | Descrição |
+|---|---|---|
+| `name` | Sim | Nome completo da pessoa |
+| `email` | Não | E-mail do lead (usado para dedup e identificação) |
+| `domain` | Não | Domínio para scraping (DNS, tecnologias, redes sociais, Dorks) |
+
+**Comportamento por cenário:**
+
+| Cenário | O que acontece |
+|---|---|
+| Só `name` | Busca o nome no DuckDuckGo — encontra e-mails, redes sociais e perfis |
+| `name` + `domain` | Scraping no domínio: tecnologias, redes sociais, Dorks. Só persiste se o **nome completo** for encontrado no HTML do site |
+| `name` + `email` | Usa o e-mail para buscar lead existente e reenriquecer |
+| Tudo preenchido | Fluxo completo: dedup por e-mail + scraping no domínio |
+
+**Resposta (200 OK):**
+
+```json
+{
+  "id": 1,
+  "emailMasked": "joa***@exemplo.com",
+  "name": "João Silva",
+  "domain": "exemplo.com",
+  "mxStatus": true,
+  "status": "ACTIVE",
+  "technologies": ["WordPress", "jQuery", "Google Analytics"],
+  "socialLinks": ["https://github.com/joaosilva", "https://linkedin.com/in/joaosilva"],
+  "socialProfileSummaries": [
+    "GitHub: joaosilva (João Silva) — Desenvolvedor full-stack",
+    "LinkedIn: João Silva — Software Engineer na Empresa X"
+  ],
+  "exposedEmails": ["contato@exemplo.com"],
+  "exposedPhones": [],
+  "exposedAdminPaths": ["/wp-admin"],
+  "exposedDocuments": [],
+  "exposedConfigFiles": [],
+  "nameMentions": ["Nome completo encontrado: João Silva"],
+  "dorkFindings": 8
+}
+```
+
+**Erro (400 Bad Request)** — nome não encontrado no domínio:
+
+```json
+{
+  "error": "Bad Request",
+  "message": "Nome \"João Silva\" não encontrado no domínio exemplo.com"
+}
+```
+
+---
+
+### `GET /api/v1/leads` — Listar todos os leads
+
+Retorna todos os leads ativos (exclui soft-deleted).
+
+```bash
+curl http://localhost:8081/api/v1/leads -H "X-API-KEY: b6vxAgj5KG5HPGCKlQQ7"
+```
+
+---
+
+### `GET /api/v1/leads/{id}` — Buscar lead por ID
+
+Retorna um lead específico. Retorna 404 se não existir ou estiver soft-deleted.
+
+```bash
+curl http://localhost:8081/api/v1/leads/1 -H "X-API-KEY: b6vxAgj5KG5HPGCKlQQ7"
+```
+
+---
+
+### `DELETE /api/v1/leads/{id}` — Soft delete (LGPD)
+
+Marca o lead como `DELETED` (direito ao esquecimento). O registro permanece no banco para auditoria, mas não aparece nas consultas.
+
+**Resposta (200 OK):**
+
+```json
+{
+  "message": "Lead excluído com sucesso (LGPD — direito ao esquecimento)",
+  "id": "1"
+}
+```
+
+---
+
+## Funcionalidades de Enriquecimento
+
+### Com domínio informado
+
+1. **Validação DNS** — verifica se o domínio tem registro MX
+2. **Scraping de tecnologias** — detecta CMS, frameworks, analytics, CDN, e-commerce, etc. (~60 assinaturas)
+3. **Descoberta de redes sociais** — encontra links para GitHub, LinkedIn, Instagram, YouTube, etc.
+4. **Scraping de perfis sociais** — acessa cada perfil encontrado e extrai título e descrição
+5. **Google Dorks** — varre o HTML do site em busca de:
+   - E-mails e telefones expostos
+   - Caminhos administrativos (`/admin`, `/wp-admin`)
+   - Documentos públicos (`.pdf`, `.docx`, `.xlsx`)
+   - Arquivos de configuração (`.env`, `.sql`, `.bak`)
+   - Menções ao nome completo da pessoa
+
+### Sem domínio informado
+
+Busca o nome no **DuckDuckGo** e extrai:
+- E-mails encontrados nos snippets de resultado
+- Links de redes sociais
+- Dados dos perfis sociais (via scraping)
+- Menções ao nome completo
+
+---
+
+## LGPD & Segurança
+
+- **E-mails criptografados** no banco (AES) via `EncryptedEmailConverter`
+- **E-mails mascarados** na resposta da API (`joa***@exemplo.com`)
+- **Soft delete** — registros marcados como `DELETED` não são removidos fisicamente
+- **Consentimento** — campo `consentGiven` e `consentDate` em cada lead
+- **Retenção de dados** — campo `dataRetentionUntil` (365 dias)
+
+---
+
+## Swagger / OpenAPI
+
+Documentação interativa disponível em:
+
+```
+http://localhost:8081/swagger-ui.html
+```
+
+---
+
+## Health Check
+
+```
+http://localhost:8081/actuator/health
+```
 echo "API_KEY=minha-chave" >> .env
 docker compose up --build
 
