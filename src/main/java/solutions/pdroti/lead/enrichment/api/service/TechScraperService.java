@@ -213,13 +213,7 @@ public class TechScraperService {
 
         try {
             Document doc = fetchDocument(normalizeUrl(domain));
-            String html = doc.html().toLowerCase();
-
-            detectByHtmlSignatures(html, technologies);
-            detectByScriptSrc(doc, technologies);
-            detectByMetaTags(doc, technologies);
-            detectByMetaProperties(doc, technologies);
-
+            detectTechnologies(doc, technologies);
         } catch (Exception e) {
             log.warn("Erro ao scrapear {}: {}", domain, e.getMessage());
             handleScrapeError(e, technologies);
@@ -239,13 +233,8 @@ public class TechScraperService {
 
         try {
             Document doc = fetchDocument(normalizeUrl(domain));
-            String html = doc.html().toLowerCase();
-
             Set<String> technologies = new LinkedHashSet<>();
-            detectByHtmlSignatures(html, technologies);
-            detectByScriptSrc(doc, technologies);
-            detectByMetaTags(doc, technologies);
-            detectByMetaProperties(doc, technologies);
+            detectTechnologies(doc, technologies);
 
             return new ScrapedPageData(
                     extractPageTitle(doc),
@@ -269,6 +258,19 @@ public class TechScraperService {
                     List.of(error), Map.of(), Map.of(), List.of(), List.of()
             );
         }
+    }
+
+    /**
+     * Detecta tecnologias no documento HTML usando assinaturas conhecidas.
+     * Centraliza a lógica de detecção usada por {@link #scrapeTechnologies}
+     * e {@link #scrapePage}, evitando duplicação.
+     */
+    private static void detectTechnologies(Document doc, Set<String> technologies) {
+        String html = doc.html().toLowerCase();
+        detectByHtmlSignatures(html, technologies);
+        detectByScriptSrc(doc, technologies);
+        detectByMetaTags(doc, technologies);
+        detectByMetaProperties(doc, technologies);
     }
 
     /** Garante scheme https se ausente. */
@@ -360,16 +362,13 @@ public class TechScraperService {
                 .findFirst().orElse(null);
     }
 
-    /** Extrai a URL do favicon. */
+    /** Extrai a URL do favicon (qualquer link com rel que contenha "icon"). */
     private static String extractFavicon(Document doc) {
-        return doc.select("link[rel~=(?i)^(icon|shortcut icon|apple-touch-icon)$]").stream()
+        return doc.select("link[rel~=(?i)icon]").stream()
                 .map(l -> l.attr("href"))
                 .filter(h -> !h.isBlank())
                 .findFirst()
-                .orElseGet(() -> doc.select("link[rel~=(?i)icon]").stream()
-                        .map(l -> l.attr("href"))
-                        .filter(h -> !h.isBlank())
-                        .findFirst().orElse(null));
+                .orElse(null);
     }
 
     /** Extrai a URL canônica. */

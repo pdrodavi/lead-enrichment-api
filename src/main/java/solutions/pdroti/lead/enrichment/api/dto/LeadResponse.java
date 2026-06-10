@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
+import static solutions.pdroti.lead.enrichment.api.dto.SerpSearchResult.empty;
+
 @Schema(description = "Resposta com dados enriquecidos do lead (email mascarado por LGPD)")
 public record LeadResponse(
         @Schema(description = "ID único do lead", example = "1")
@@ -69,8 +71,18 @@ public record LeadResponse(
 
         // === Dados OpenSERP (resultado bruto da busca) ===
 
-        @Schema(description = "Resultado bruto da busca no OpenSERP (como objeto)")
-        Object serperRawData,
+        @Schema(description = "Resultado estruturado da busca no OpenSERP")
+        SerpSearchResult serperRawData,
+
+        @Schema(description = "Links para documentos encontrados (PDF, DOC, XLS, PPT, etc.)",
+                example = "[\"https://example.com/curriculo.pdf\"]")
+        List<String> foundDocuments,
+
+        // === Todos os links descobertos (não só sociais) ===
+
+        @Schema(description = "Todos os URLs descobertos durante o enriquecimento (inclui sociais e não-sociais)",
+                example = "[\"https://example.com\", \"https://github.com/pdroti\"]")
+        List<String> discoveredUrls,
 
         // === Dados RDAP (registro de domínio) ===
 
@@ -104,6 +116,8 @@ public record LeadResponse(
                 extractUrlsFromMentions(mentions),
                 lead.getDorkFindings(),
                 buildSerperResult(lead),
+                lead.getFoundDocuments(),
+                lead.getDiscoveredUrls(),
                 buildRdap(lead)
         );
     }
@@ -121,13 +135,14 @@ public record LeadResponse(
         return urls;
     }
 
-    /** Converte o JSON bruto do OpenSERP em objeto para o response. */
-    private static Object buildSerperResult(Lead lead) {
+    /** Converte o JSON estruturado do OpenSERP em objeto tipado para o response. */
+    private static SerpSearchResult buildSerperResult(Lead lead) {
         if (lead.getSerperRawData() == null) return null;
         try {
-            return JSON_MAPPER.readTree(lead.getSerperRawData());
+            return JSON_MAPPER.readValue(lead.getSerperRawData(), SerpSearchResult.class);
         } catch (Exception e) {
-            return lead.getSerperRawData();
+            // Se falhar ao deserializar, retorna vazio (dados legacy ou corrompidos)
+            return empty(null);
         }
     }
 

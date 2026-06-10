@@ -1,10 +1,14 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import solutions.pdroti.lead.enrichment.api.dto.RdapData;
+import solutions.pdroti.lead.enrichment.api.dto.SerpResultItem;
+import solutions.pdroti.lead.enrichment.api.dto.SerpSearchResult;
 import solutions.pdroti.lead.enrichment.api.model.Lead;
 import solutions.pdroti.lead.enrichment.api.repository.LeadRepository;
 import solutions.pdroti.lead.enrichment.api.util.EmailUtils;
@@ -43,6 +47,9 @@ public class LeadService {
 
     /** Número máximo de resultados retornados pelo OpenSERP. */
     private static final int OPENSERP_MAX_RESULTS = 30;
+
+    /** ObjectMapper para serializar/deserializar os resultados estruturados do OpenSERP. */
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     /**
      * Enriquece um lead com dados públicos.
@@ -253,6 +260,8 @@ public class LeadService {
         lead.setRdapStatus(null);
         lead.setRdapTaxpayerId(null);
         lead.setRdapSource(null);
+        lead.setFoundDocuments(null);
+        lead.setDiscoveredUrls(null);
     }
 
     /**
@@ -349,25 +358,78 @@ public class LeadService {
         lead.setExposedEmails(null);
         lead.setDorkFindings(0);
         lead.setSerperRawData(null);
+        lead.setFoundDocuments(null);
 
-        JsonArray results = fetchOpenSerpResults(lead, name);
-        if (results == null || results.isEmpty()) {
+        // 1. Busca páginas web com o nome da pessoa
+        JsonArray results = fetchOpenSerpResults(name);
+
+        // 2. Busca documentos (PDF, DOC, XLS, etc.) com o nome da pessoa
+        JsonArray docResults = fetchOpenSerpDocuments(name);
+
+        boolean hasResults = (results != null && !results.isEmpty());
+        boolean hasDocs = (docResults != null && !docResults.isEmpty());
+
+        if (!hasResults && !hasDocs) {
             log.warn("OpenSERP não retornou resultados para '{}'", name);
             // NOTA: new ArrayList<>() obrigatório — Hibernate precisa de listas mutáveis
             lead.setSocialLinks(new ArrayList<>());
             lead.setExposedEmails(new ArrayList<>());
             lead.setNameMentions(new ArrayList<>());
+            lead.setFoundDocuments(new ArrayList<>());
+            lead.setSerperRawData(serializeSerpResult(SerpSearchResult.empty(name)));
             return;
         }
 
-        // Processa cada resultado do OpenSERP
+        // Processa todos os resultados (web + documentos)
         Set<String> allLinks = new LinkedHashSet<>();
         Set<String> socialLinksFound = new LinkedHashSet<>();
         List<String> emails = new ArrayList<>();
         List<String> nameMentions = new ArrayList<>();
+        List<SerpResultItem> matchedItems = new ArrayList<>();
+        List<String> foundDocs = new ArrayList<>();
 
         // Reuso do pattern de domínios sociais do SocialDiscoveryService
         var socialDomains = SocialDiscoveryService.getSocialDomains();
+
+        // Processa resultados de páginas web
+        if (hasResults) {
+            processSerpJsonArray(results, name, matchedItems, allLinks, socialLinksFound,
+                    socialDomains, nameMentions, emails, foundDocs);
+        }
+
+        // Processa resultados de documentos
+        if (hasDocs) {
+            processSerpJsonArray(docResults, name, matchedItems, allLinks, socialLinksFound,
+                    socialDomains, nameMentions, emails, foundDocs);
+        }
+
+        // Montagem dos resultados no lead
+        lead.setSocialLinks(new ArrayList<>(socialLinksFound));
+        lead.setDiscoveredUrls(new ArrayList<>(allLinks));
+        lead.setExposedEmails(emails);
+        lead.setDorkFindings(emails.size());
+        lead.setNameMentions(nameMentions);
+        lead.setFoundDocuments(foundDocs);
+
+        // Armazena resultado estruturado em vez de JSON bruto
+        lead.setSerperRawData(serializeSerpResult(
+                new SerpSearchResult(name, matchedItems.size(), matchedItems)));
+
+        log.info("OpenSERP: {} links totais, {} sociais, {} e-mails, {} menções, {} docs, {} resultados estruturados",
+                allLinks.size(), socialLinksFound.size(), emails.size(), nameMentions.size(),
+                foundDocs.size(), matchedItems.size());
+    }
+
+    /**
+     * Processa um JsonArray de resultados do OpenSERP, aplicando o filtro de nome
+     * e populando todas as coleções de saída.
+     */
+    private void processSerpJsonArray(
+            JsonArray results, String name,
+            List<SerpResultItem> matchedItems, Set<String> allLinks,
+            Set<String> socialLinksFound, List<String> socialDomains,
+            List<String> nameMentions, List<String> emails,
+            List<String> foundDocs) {
 
         for (int i = 0; i < results.size(); i++) {
             JsonObject r = results.get(i).getAsJsonObject();
@@ -378,53 +440,75 @@ public class LeadService {
             if (link == null) continue;
 
             // Só processa resultados que contêm o nome completo (100% match)
-            // Evita trazer dados de outra pessoa com nome parcial igual
             if (!nameMatchesExactly(snippet, name) && !nameMatchesExactly(title, name)) {
                 continue;
+            }
+
+            SerpResultItem item = SerpResultItem.fromSearchResult(
+                    matchedItems.size() + 1, link, title, snippet);
+            matchedItems.add(item);
+
+            // Se for um documento (PDF, DOC, etc.), registra separadamente
+            if (item.fileType() != null) {
+                foundDocs.add(link);
             }
 
             allLinks.add(link);
             String lowerLink = link.toLowerCase();
 
-            // Classifica link como social se pertencer a domínio conhecido
             if (socialDomains.stream().anyMatch(lowerLink::contains)) {
                 socialLinksFound.add(link);
             }
 
-            // Menção ao nome completo encontrado
             nameMentions.add("Nome completo encontrado em: " + link);
-
-            // Extração de e-mails do snippet/título
             extractEmails(emails, snippet, title);
         }
-
-        // Montagem dos resultados no lead
-        lead.setSocialLinks(new ArrayList<>(socialLinksFound));
-        lead.getSocialLinks().addAll(allLinks);
-        lead.setExposedEmails(emails);
-        lead.setDorkFindings(emails.size());
-        lead.setNameMentions(nameMentions);
-
-        log.info("OpenSERP: {} links totais, {} sociais, {} e-mails, {} menções",
-                allLinks.size(), socialLinksFound.size(), emails.size(), nameMentions.size());
     }
 
 
 
     /**
      * Faz a chamada ao OpenSERP e retorna os resultados como JsonArray.
-     * Em caso de falha, retorna um array vazio e registra o erro.
+     * O armazenamento estruturado é feito em {@link #enrichWithOpenSerp(Lead, String)}.
      */
-    private JsonArray fetchOpenSerpResults(Lead lead, String name) {
+    private JsonArray fetchOpenSerpResults(String name) {
         try {
             JsonArray results = openSerpSearch.searchPerson(name, OPENSERP_MAX_RESULTS);
-            lead.setSerperRawData(results.toString());
-            log.info("OpenSERP: {} resultados para '{}'", results.size(), name);
+            log.info("OpenSERP: {} resultados brutos para '{}'", results.size(), name);
             return results;
         } catch (Exception e) {
             log.warn("OpenSERP falhou para '{}': {}", name, e.getMessage());
-            lead.setSerperRawData(null);
             return new JsonArray();
+        }
+    }
+
+    /**
+     * Busca documentos (PDF, DOC, XLS, PPT) com o nome da pessoa no OpenSERP.
+     *
+     * @param name nome da pessoa para buscar nos documentos
+     * @return JsonArray com resultados de documentos
+     */
+    private JsonArray fetchOpenSerpDocuments(String name) {
+        try {
+            JsonArray docResults = openSerpSearch.searchDocuments(name, OPENSERP_MAX_RESULTS);
+            log.info("OpenSERP documentos: {} resultados brutos para '{}'", docResults.size(), name);
+            return docResults;
+        } catch (Exception e) {
+            log.warn("OpenSERP documentos falhou para '{}': {}", name, e.getMessage());
+            return new JsonArray();
+        }
+    }
+
+    /**
+     * Serializa o resultado estruturado do OpenSERP para JSON.
+     * Se falhar, retorna o JSON de um resultado vazio.
+     */
+    private String serializeSerpResult(SerpSearchResult result) {
+        try {
+            return JSON_MAPPER.writeValueAsString(result);
+        } catch (JsonProcessingException e) {
+            log.warn("Falha ao serializar resultado estruturado do OpenSERP: {}", e.getMessage());
+            return "{\"query\":\"\",\"totalResults\":0,\"items\":[]}";
         }
     }
 
@@ -468,8 +552,14 @@ public class LeadService {
     }
 
     /**
-     * Extrai endereços de e-mail de um texto (snippet + título) usando regex.
-     * Filtra e-mails falsos como "example.com".
+     * Extrai endereços de e-mail do snippet e título de um resultado de busca.
+     * <p>
+     * Usa {@link #EMAIL_PATTERN} para encontrar e-mails no formato padrão.
+     * Filtra e-mails falsos como {@code *@example.com}.
+     *
+     * @param emails  lista onde os e-mails encontrados serão adicionados
+     * @param snippet trecho de contexto do resultado
+     * @param title   título do resultado
      */
     private void extractEmails(List<String> emails, String snippet, String title) {
         var matcher = EMAIL_PATTERN.matcher(snippet + " " + title);
@@ -526,6 +616,7 @@ public class LeadService {
      * @param id ID do lead a ser removido
      * @return true se foi removido, false se não encontrado
      */
+    @SuppressWarnings("null")
     private boolean performHardDelete(Long id) {
         return leadRepository.findById(id)
                 .map(lead -> {

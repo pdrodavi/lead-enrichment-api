@@ -111,4 +111,51 @@ public class OpenSerpSearch {
     public JsonArray searchPerson(String name) throws Exception {
         return searchPerson(name, DEFAULT_LIMIT);
     }
+
+    /**
+     * Busca documentos (PDF, DOC, XLS, PPT, etc.) que contenham o nome da pessoa.
+     * <p>
+     * Utiliza o operador {@code filetype:} do Google para filtrar resultados
+     * por tipo de arquivo. Executa uma busca separada para cada tipo.
+     *
+     * @param name  nome da pessoa para buscar nos documentos
+     * @param limit máximo de resultados por tipo de arquivo
+     * @return JsonArray mesclado com resultados de todos os tipos de documento
+     */
+    public JsonArray searchDocuments(String name, int limit) {
+        String[] fileTypes = {"pdf"};
+        JsonArray all = new JsonArray();
+
+        for (String fileType : fileTypes) {
+            try {
+                String query = "\"" + name + "\" filetype:" + fileType;
+                String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+                String url = baseUrl + "/google/search?text=" + encodedQuery + "&limit=" + limit;
+
+                Request request = new Request.Builder()
+                        .url(url)
+                        .get()
+                        .build();
+
+                try (Response response = client.newCall(request).execute()) {
+                    if (!response.isSuccessful() || response.body() == null) {
+                        log.debug("OpenSERP docs ({}): HTTP {} para '{}'", fileType, response.code(), name);
+                        continue;
+                    }
+                    String json = response.body().string();
+                    JsonObject root = gson.fromJson(json, JsonObject.class);
+                    JsonArray results = root.getAsJsonArray("results");
+                    if (results != null && !results.isEmpty()) {
+                        log.debug("OpenSERP docs ({}): {} resultados para '{}'", fileType, results.size(), name);
+                        all.addAll(results);
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("OpenSERP docs falhou para filetype={} '{}': {}", fileType, name, e.getMessage());
+            }
+        }
+
+        log.info("OpenSERP documentos: {} resultados no total para '{}'", all.size(), name);
+        return all;
+    }
 }
