@@ -447,9 +447,9 @@ public class TechScraperService {
     /**
      * Verifica se o nome de uma pessoa é mencionado no HTML da página do domínio.
      * <p>
-     * Busca o nome completo e cada parte significativa do nome (≥ 3 caracteres)
-     * no texto visível da página. Útil para validar se um lead realmente
-     * está associado ao domínio informado.
+     * Busca APENAS o nome completo no texto visível da página, exigindo que
+     * apareça como termo distinto (com boundaries). Nunca faz match parcial
+     * de partes do nome para evitar associar dados de outra pessoa.
      *
      * @param domain domínio para buscar (ex: "pdroti.com")
      * @param name   nome completo da pessoa (ex: "João Silva")
@@ -462,30 +462,20 @@ public class TechScraperService {
 
         try {
             Document doc = fetchDocument(normalizeUrl(domain));
-            String pageText = doc.text().toLowerCase();
-            String lowerName = name.toLowerCase();
-            String[] nameParts = lowerName.split("\\s+");
+            String pageText = doc.text();
             List<String> mentions = new ArrayList<>();
 
             // URL completa com protocolo para extração em nameMentionUrls
             String pageUrl = "https://" + domain;
 
-            // Verifica nome completo no texto da página
-            if (pageText.contains(lowerName)) {
+            // Verifica nome completo no texto da página (match exato com boundaries)
+            if (nameMatchesExactly(pageText, name)) {
                 mentions.add("Nome completo encontrado em: " + pageUrl);
-            } else {
-                // Verifica partes significativas do nome
-                for (String part : nameParts) {
-                    if (part.length() > 2 && pageText.contains(part)) {
-                        mentions.add("Parte do nome '" + part + "' encontrada em: " + pageUrl);
-                        break;
-                    }
-                }
             }
 
             // Verifica também no título da página
-            String title = doc.title().toLowerCase();
-            if (title.contains(lowerName)) {
+            String title = doc.title();
+            if (nameMatchesExactly(title, name)) {
                 mentions.add("Nome completo encontrado no título da página: " + pageUrl);
             }
 
@@ -494,6 +484,38 @@ public class TechScraperService {
             log.debug("Falha ao buscar nome na página {}: {}", domain, e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * Verifica se o nome completo aparece no texto como termo distinto,
+     * evitando matches parciais dentro de outras palavras.
+     *
+     * @param text texto onde buscar
+     * @param name nome completo a ser encontrado
+     * @return true se o nome completo for encontrado com boundaries
+     */
+    private boolean nameMatchesExactly(String text, String name) {
+        if (text == null || name == null) return false;
+        String lowerText = text.toLowerCase();
+        String lowerName = name.toLowerCase();
+
+        int idx = lowerText.indexOf(lowerName);
+        if (idx < 0) return false;
+
+        // Verifica se não há caractere alfanumérico antes do nome
+        if (idx > 0) {
+            char before = lowerText.charAt(idx - 1);
+            if (Character.isLetterOrDigit(before)) return false;
+        }
+
+        // Verifica se não há caractere alfanumérico depois do nome
+        int endIdx = idx + lowerName.length();
+        if (endIdx < lowerText.length()) {
+            char after = lowerText.charAt(endIdx);
+            if (Character.isLetterOrDigit(after)) return false;
+        }
+
+        return true;
     }
 
     /** Classifica a exceção em um ScrapeError legível e adiciona à lista. */
