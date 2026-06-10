@@ -201,7 +201,10 @@ public class LeadService {
         lead.setEmail(email);
         lead.setDomain(domain);
         lead.setName(name);
-        lead.setCreatedAt(LocalDateTime.now());
+        lead.setStatus(DEFAULT_STATUS);
+        if (existing == null) {
+            lead.setCreatedAt(LocalDateTime.now());
+        }
 
         String logId = maskEmail(email);
         if (logId == null) logId = name;
