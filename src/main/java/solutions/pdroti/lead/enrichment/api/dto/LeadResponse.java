@@ -74,6 +74,16 @@ public record LeadResponse(
         @Schema(description = "Resultado estruturado da busca no OpenSERP")
         SerpSearchResult serperRawData,
 
+        @Schema(description = "Links para documentos encontrados (PDF, DOC, XLS, PPT, etc.)",
+                example = "[\"https://example.com/curriculo.pdf\"]")
+        List<String> foundDocuments,
+
+        // === Todos os links descobertos (não só sociais) ===
+
+        @Schema(description = "Todos os URLs descobertos durante o enriquecimento (inclui sociais e não-sociais)",
+                example = "[\"https://example.com\", \"https://github.com/pdroti\"]")
+        List<String> discoveredUrls,
+
         // === Dados RDAP (registro de domínio) ===
 
         @Schema(description = "Dados RDAP do domínio")
@@ -106,6 +116,8 @@ public record LeadResponse(
                 extractUrlsFromMentions(mentions),
                 lead.getDorkFindings(),
                 buildSerperResult(lead),
+                lead.getFoundDocuments(),
+                lead.getDiscoveredUrls(),
                 buildRdap(lead)
         );
     }

@@ -26,6 +26,18 @@ public class EmailUtils {
     private static final String HASH_ALGORITHM = "SHA-256";
 
     /**
+     * Cache thread-safe do MessageDigest para evitar recriação
+     * a cada chamada de {@link #hash(String)}.
+     */
+    private static final ThreadLocal<MessageDigest> DIGEST_CACHE = ThreadLocal.withInitial(() -> {
+        try {
+            return MessageDigest.getInstance(HASH_ALGORITHM);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("Algoritmo de hash não disponível: " + HASH_ALGORITHM, e);
+        }
+    });
+
+    /**
      * Ofusca um e-mail para exibição segura (LGPD).
      * <p>
      * Mantém visíveis apenas os primeiros 3 caracteres do local-part
@@ -55,6 +67,9 @@ public class EmailUtils {
      * Computa o hash SHA-256 do e-mail (normalizado para lowercase)
      * para consulta no banco de dados.
      * <p>
+     * Usa {@link ThreadLocal} para cache do {@link MessageDigest},
+     * evitando recriação a cada chamada sem sacrificar thread-safety.
+     * <p>
      * Útil porque o e-mail em si é criptografado (AES-GCM) e não pode
      * ser usado em consultas JPA. O hash permite lookup sem expor o dado.
      *
@@ -63,12 +78,9 @@ public class EmailUtils {
      */
     public static String hash(String email) {
         if (email == null || email.isBlank() || !email.contains("@")) return null;
-        try {
-            MessageDigest md = MessageDigest.getInstance(HASH_ALGORITHM);
-            byte[] digest = md.digest(email.strip().toLowerCase().getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("Algoritmo de hash não disponível: " + HASH_ALGORITHM, e);
-        }
+        MessageDigest md = DIGEST_CACHE.get();
+        md.reset();
+        byte[] digest = md.digest(email.strip().toLowerCase().getBytes(StandardCharsets.UTF_8));
+        return HexFormat.of().formatHex(digest);
     }
 }

@@ -124,6 +124,14 @@ public class Lead implements Serializable {
     @Column(columnDefinition = "TEXT")
     private String serperRawData;
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Column(length = 2048)
+    private List<String> foundDocuments;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Column(length = 2048)
+    private List<String> discoveredUrls;
+
     // === LGPD — consentimento e retenção ===
 
     private Boolean consentGiven;
@@ -237,6 +245,12 @@ public class Lead implements Serializable {
 
     public String getSerperRawData() { return serperRawData; }
     public void setSerperRawData(String serperRawData) { this.serperRawData = serperRawData; }
+
+    public List<String> getFoundDocuments() { return foundDocuments; }
+    public void setFoundDocuments(List<String> foundDocuments) { this.foundDocuments = foundDocuments; }
+
+    public List<String> getDiscoveredUrls() { return discoveredUrls; }
+    public void setDiscoveredUrls(List<String> discoveredUrls) { this.discoveredUrls = discoveredUrls; }
 
     public Boolean isConsentGiven() { return consentGiven; }
     public void setConsentGiven(Boolean consentGiven) { this.consentGiven = consentGiven; }

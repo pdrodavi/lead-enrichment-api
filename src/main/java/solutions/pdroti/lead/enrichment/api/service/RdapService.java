@@ -238,19 +238,30 @@ public class RdapService {
         }
     }
 
-    /** Extrai o campo fn (full name) do vcardArray de uma entidade. */
-    private String extractFnFromVcard(JsonNode entity) {
+    /**
+     * Extrai um campo específico do vcardArray de uma entidade RDAP.
+     * <p>
+     * O RDAP usa o formato jCard (JSON vCard) para representar dados
+     * de pessoas e organizações. Cada propriedade é um array onde:
+     * <ul>
+     *   <li>{@code [0]} = nome do parâmetro (ex: "fn", "email")</li>
+     *   <li>{@code [3]} = valor do campo</li>
+     * </ul>
+     *
+     * @param entity    entidade RDAP (pessoa/organização)
+     * @param fieldName nome do campo a extrair ("fn" ou "email")
+     * @return valor do campo, ou null se não encontrado
+     */
+    private String extractFromVcard(JsonNode entity, String fieldName) {
         try {
             JsonNode vcard = entity.get("vcardArray");
             if (vcard != null && vcard.isArray() && vcard.size() > 1) {
                 JsonNode props = vcard.get(1);
                 if (props != null && props.isArray()) {
                     for (JsonNode prop : props) {
-                        if (prop.isArray() && prop.size() > 3) {
-                            String name = prop.get(0).asText();
-                            if ("fn".equals(name)) {
-                                return prop.get(3).asText();
-                            }
+                        if (prop.isArray() && prop.size() > 3
+                                && fieldName.equals(prop.get(0).asText())) {
+                            return prop.get(3).asText();
                         }
                     }
                 }
@@ -259,25 +270,14 @@ public class RdapService {
         return null;
     }
 
-    /** Extrai e-mail do vcardArray de uma entidade. */
+    /** Extrai o nome completo (fn) do vcardArray de uma entidade. */
+    private String extractFnFromVcard(JsonNode entity) {
+        return extractFromVcard(entity, "fn");
+    }
+
+    /** Extrai o e-mail do vcardArray de uma entidade. */
     private String extractEmailFromVcard(JsonNode entity) {
-        try {
-            JsonNode vcard = entity.get("vcardArray");
-            if (vcard != null && vcard.isArray() && vcard.size() > 1) {
-                JsonNode props = vcard.get(1);
-                if (props != null && props.isArray()) {
-                    for (JsonNode prop : props) {
-                        if (prop.isArray() && prop.size() > 3) {
-                            String name = prop.get(0).asText();
-                            if ("email".equals(name)) {
-                                return prop.get(3).asText();
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception ignored) {}
-        return null;
+        return extractFromVcard(entity, "email");
     }
 
     /** Busca a data de um evento específico no JSON RDAP. */
