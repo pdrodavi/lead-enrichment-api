@@ -1,11 +1,12 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
 import solutions.pdroti.lead.enrichment.api.dto.RdapData;
 import solutions.pdroti.lead.enrichment.api.dto.SerpResultItem;
 import solutions.pdroti.lead.enrichment.api.dto.SerpSearchResult;
@@ -37,6 +38,7 @@ public class LeadService {
     private final SocialDiscoveryService socialDiscoveryService;
     private final RdapService rdapService;
     private final OpenSerpSearch openSerpSearch;
+    private final ObjectMapper objectMapper;
     private static final int DATA_RETENTION_DAYS = 365;
     private static final String DEFAULT_STATUS = "ACTIVE";
     private static final String DELETED_STATUS = "DELETED";
@@ -47,9 +49,6 @@ public class LeadService {
 
     /** Número máximo de resultados retornados pelo OpenSERP. */
     private static final int OPENSERP_MAX_RESULTS = 30;
-
-    /** ObjectMapper para serializar/deserializar os resultados estruturados do OpenSERP. */
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     /**
      * Enriquece um lead com dados públicos.
@@ -68,7 +67,7 @@ public class LeadService {
      */
     @Transactional
     public Lead enrich(String email, String domain, String name) {
-        log.info("Enriquecendo lead: nome={} email={} domain={}", name, maskEmail(email), domain);
+        log.info("Enriquecendo lead: nome={} email={} domain={}", name, EmailUtils.mask(email), domain);
 
         if (domain == null) {
             domain = extractDomainFromEmail(email);
@@ -111,7 +110,8 @@ public class LeadService {
      * @return lista de leads do domínio, ou lista vazia se domain for inválido
      */
     public List<Lead> findByDomain(String domain) {
-        if (!hasText(domain)) return List.of();
+        //if (!hasText(domain)) return List.of();
+        if (!StringUtils.hasText(domain)) return List.of();
         return leadRepository.findByDomainAndStatus(domain, DEFAULT_STATUS);
     }
 
@@ -149,6 +149,7 @@ public class LeadService {
         lead.setName(name);
         lead.setEmail(email);
         lead.setDomain(domain != null ? domain : extractDomainFromEmail(email));
+        lead.setUpdatedAt(LocalDateTime.now());
 
         return performFullEnrichment(lead, email, lead.getDomain(), name);
     }
@@ -208,9 +209,12 @@ public class LeadService {
         lead.setEmail(email);
         lead.setDomain(domain);
         lead.setName(name);
-        lead.setCreatedAt(LocalDateTime.now());
+        //lead.setCreatedAt(LocalDateTime.now());
+        if (lead.getCreatedAt() == null) {
+            lead.setCreatedAt(LocalDateTime.now());
+        }
 
-        String logId = maskEmail(email);
+        String logId = EmailUtils.mask(email);
         if (logId == null) logId = name;
 
         resetEnrichmentData(lead);
@@ -219,9 +223,11 @@ public class LeadService {
         enrichWithOpenSerp(lead, name);
 
         // 2. Domínio — executado apenas se disponível
-        if (hasText(domain)) {
+        if (StringUtils.hasText(domain)) {
             enrichWithDomain(lead, domain, name);
         }
+
+        lead.setUpdatedAt(LocalDateTime.now());
 
         Lead savedLead = leadRepository.save(lead);
         log.info("Lead enriquecido: {}", logId);
@@ -235,16 +241,16 @@ public class LeadService {
      */
     private void resetEnrichmentData(Lead lead) {
         lead.setMxStatus(false);
-        lead.setDnsMxRecords(null);
-        lead.setDnsARecords(null);
-        lead.setDnsAaaaRecords(null);
-        lead.setDnsCnameRecords(null);
-        lead.setDnsTxtRecords(null);
-        lead.setTechnologies(null);
-        lead.setSocialLinks(null);
-        lead.setSocialProfileSummaries(null);
-        lead.setExposedEmails(null);
-        lead.setNameMentions(null);
+        lead.setDnsMxRecords(new ArrayList<>());
+        lead.setDnsARecords(new ArrayList<>());
+        lead.setDnsAaaaRecords(new ArrayList<>());
+        lead.setDnsCnameRecords(new ArrayList<>());
+        lead.setDnsTxtRecords(new ArrayList<>());
+        lead.setTechnologies(new ArrayList<>());
+        lead.setSocialLinks(new ArrayList<>());
+        lead.setSocialProfileSummaries(new ArrayList<>());
+        lead.setExposedEmails(new ArrayList<>());
+        lead.setNameMentions(new ArrayList<>());
         lead.setDorkFindings(0);
         lead.setSerperRawData(null);
         lead.setRdapRawData(null);
@@ -253,12 +259,12 @@ public class LeadService {
         lead.setRdapRegistrantEmail(null);
         lead.setRdapRegistrationDate(null);
         lead.setRdapExpirationDate(null);
-        lead.setRdapNameservers(null);
-        lead.setRdapStatus(null);
+        lead.setRdapNameservers(new ArrayList<>());
+        lead.setRdapStatus(new ArrayList<>());
         lead.setRdapTaxpayerId(null);
         lead.setRdapSource(null);
-        lead.setFoundDocuments(null);
-        lead.setDiscoveredUrls(null);
+        lead.setFoundDocuments(new ArrayList<>());
+        lead.setDiscoveredUrls(new ArrayList<>());
     }
 
     /**
@@ -282,8 +288,26 @@ public class LeadService {
         // 2. Consulta RDAP (dados de registro do domínio)
         enrichWithRdap(lead, domain);
 
-        // 3. Scraping de tecnologias
-        lead.setTechnologies(scrapeSafely(() -> techScraperService.scrapeTechnologies(domain)));
+        // 3. Scraping de tecnologias + verificação de nome (UMA requisição HTTP)
+        executeSafely(
+                () -> techScraperService.scrapeTechnologiesAndCheckName(domain, name),
+                result -> {
+                    if (result != null) {
+                        lead.setTechnologies(new ArrayList<>(result.technologies()));
+                        // Mescla menções do domínio com as vindas do OpenSERP
+                        List<String> existingMentions = lead.getNameMentions() != null
+                                ? lead.getNameMentions() : new ArrayList<>();
+                        Set<String> mergedMentions = new LinkedHashSet<>(existingMentions);
+                        mergedMentions.addAll(result.nameMentions());
+                        lead.setNameMentions(new ArrayList<>(mergedMentions));
+
+                        boolean nameFound = result.nameMentions().stream()
+                                .anyMatch(m -> m.startsWith("Nome completo encontrado"));
+                        if (!nameFound) {
+                            log.warn("Nome '{}' não encontrado no HTML do domínio {}", name, domain);
+                        }
+                    }
+                }, name);
 
         // 4. Descoberta de redes sociais — mescla com links vindos do OpenSERP
         List<String> domainSocialLinks = scrapeSafely(
@@ -297,27 +321,11 @@ public class LeadService {
         if (!domainSocialLinks.isEmpty()) {
             List<String> profiles = socialDiscoveryService.scrapeSocialProfiles(domainSocialLinks)
                     .stream().map(p -> p.toSummary()).toList();
-            // Mescla com summaries vindos do OpenSERP
             List<String> existingSummaries = lead.getSocialProfileSummaries() != null
                     ? lead.getSocialProfileSummaries() : List.of();
             Set<String> mergedSummaries = new LinkedHashSet<>(existingSummaries);
             mergedSummaries.addAll(profiles);
             lead.setSocialProfileSummaries(new ArrayList<>(mergedSummaries));
-        }
-
-        // 6. Verifica se o nome da pessoa aparece no HTML do domínio — mescla com menções do OpenSERP
-        List<String> domainNameMentions = scrapeSafely(
-                () -> techScraperService.findNameInPage(domain, name));
-        List<String> existingMentions = lead.getNameMentions() != null
-                ? lead.getNameMentions() : new ArrayList<>();
-        Set<String> mergedMentions = new LinkedHashSet<>(existingMentions);
-        mergedMentions.addAll(domainNameMentions);
-        lead.setNameMentions(new ArrayList<>(mergedMentions));
-
-        boolean nameFound = domainNameMentions.stream()
-                .anyMatch(m -> m.startsWith("Nome completo encontrado"));
-        if (!nameFound) {
-            log.warn("Nome '{}' não encontrado no HTML do domínio {}", name, domain);
         }
     }
 
@@ -386,7 +394,7 @@ public class LeadService {
         List<String> foundDocs = new ArrayList<>();
 
         // Reuso do pattern de domínios sociais do SocialDiscoveryService
-        var socialDomains = SocialDiscoveryService.getSocialDomains();
+        var socialDomains = socialDiscoveryService.getSocialDomains();
 
         // Processa resultados de páginas web
         if (hasResults) {
@@ -502,8 +510,8 @@ public class LeadService {
      */
     private String serializeSerpResult(SerpSearchResult result) {
         try {
-            return JSON_MAPPER.writeValueAsString(result);
-        } catch (JsonProcessingException e) {
+            return objectMapper.writeValueAsString(result);
+        } catch (Exception e) {
             log.warn("Falha ao serializar resultado estruturado do OpenSERP: {}", e.getMessage());
             return "{\"query\":\"\",\"totalResults\":0,\"items\":[]}";
         }
@@ -599,6 +607,7 @@ public class LeadService {
      * @return sempre true
      */
     private boolean performSoftDelete(Lead lead) {
+        lead.setUpdatedAt(LocalDateTime.now());
         lead.setDeletedAt(LocalDateTime.now());
         lead.setStatus(DELETED_STATUS);
         leadRepository.save(lead);
@@ -676,16 +685,6 @@ public class LeadService {
     }
 
     /**
-     * Verifica se uma string contém texto visível (não nula e não blank).
-     *
-     * @param s string a ser verificada
-     * @return true se a string não for nula nem composta apenas de espaços
-     */
-    private static boolean hasText(String s) {
-        return s != null && !s.isBlank();
-    }
-
-    /**
      * Executa um Supplier de lista com try-catch e converte o resultado
      * em ArrayList mutável. Evita UnsupportedOperationException que o Hibernate
      * lança ao tentar persistir listas imutáveis (List.of(), List.copyOf()).
@@ -728,17 +727,6 @@ public class LeadService {
             log.warn("ID inválido (deve ser numérico): {}", id);
             return Optional.empty();
         }
-    }
-
-    /**
-     * Ofusca o e-mail para logging usando {@link EmailUtils#mask(String)}.
-     * Segue a LGPD — nenhum e-mail completo deve aparecer em logs.
-     *
-     * @param email e-mail a ser mascarado
-     * @return e-mail mascarado (ex: "ped***@pdroti.com") ou null
-     */
-    private String maskEmail(String email) {
-        return email != null ? EmailUtils.mask(email) : null;
     }
 
     /**

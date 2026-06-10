@@ -14,20 +14,26 @@ graph TB
         AKF["«SecurityFilter» ApiKeyFilter<br/>Valida X-API-KEY"]
     end
 
+    subgraph "Camada de Configuração"
+        APP["AppConfig<br/>RestTemplate Bean<br/>(timeouts: 5s/20s)"]
+        TCP["TechScraperProperties<br/>(assinaturas YAML)"]
+        SDP["SocialDiscoveryProperties<br/>(domínios + plataformas)"]
+    end
+
     subgraph "Camada de Serviços"
         LS["«Orquestrador» LeadService"]
         DNS["DnsValidationService<br/>dnsjava — MX, A, AAAA, CNAME, TXT"]
-        TSS["TechScraperService<br/>Jsoup — ~90 assinaturas"]
+        TSS["TechScraperService<br/>Jsoup — 1 chamada HTTP combinada"]
         SDS["SocialDiscoveryService<br/>Jsoup — 31 plataformas"]
         RS["RdapService<br/>Identity Digital + Registro.br"]
-        OSS["OpenSerpSearch<br/>OkHttp — Google Search API"]
+        OSS["OpenSerpSearch<br/>RestTemplate — Google Search API"]
         EU["EmailUtils<br/>SHA-256 hash + Mascaramento LGPD"]
     end
 
     subgraph "Camada de Persistência"
         LREPO["LeadRepository<br/>Spring Data JPA"]
         EEC["EncryptedEmailConverter<br/>+ EncryptionService<br/>AES-128-GCM"]
-        DB[("PostgreSQL 16<br/>Tabela: leads")]
+        DB[("PostgreSQL 16<br/>Tabela: leads<br/>FetchType: LAZY")]
     end
 
     subgraph "Serviços Externos"
@@ -41,8 +47,11 @@ graph TB
     %% Conexões
     AKF -->|401 se inválida| GEH
     AKF -->|passa requisição| LC
-
     LC -->|chama| LS
+
+    TSS --> TCP
+    SDS --> SDP
+    OSS --> APP
 
     LS --> DNS
     LS --> TSS
@@ -59,7 +68,15 @@ graph TB
     TSS -->|scraping| WEB
     SDS -->|scraping| SOCIAL
     RS -->|HTTP RDAP| RDAP_API
-    OSS -->|HTTP /google/search| OPENSERP
+    OSS -->|HTTP RestTemplate| OPENSERP
+
+    TSS --> TCP
+    SDS --> SDP
+    OSS --> APP
+
+    classDef config fill:#fff3bf,stroke:#f08c00,stroke-width:2px
+
+    class APP,TCP,SDP config
 
     %% Estilo
     classDef controller fill:#e7f5ff,stroke:#1971c2,stroke-width:2px
@@ -70,6 +87,7 @@ graph TB
 
     class LC,OAC,GEH controller
     class AKF security
+    class APP,TCP,SDP config
     class LS,DNS,TSS,SDS,RS,OSS,EU service
     class LREPO,EEC,DB persistence
     class NS,WEB,SOCIAL,RDAP_API,OPENSERP external
@@ -126,12 +144,23 @@ classDiagram
         +String name
         +String domain
         +boolean mxStatus
-        +List~String~ dnsMxRecords
-        +List~String~ dnsARecords
-        +List~String~ dnsAaaaRecords
-        +List~String~ dnsCnameRecords
-        +List~String~ dnsTxtRecords
         +String status
+        +DnsRecords dnsRecords
+        +DiscoveryData discoveryData
+        +SerpSearchResult serperRawData
+        +RdapData rdap
+        +fromEntity(Lead, ObjectMapper) LeadResponse
+    }
+
+    class DnsRecords {
+        +List~String~ mxRecords
+        +List~String~ aRecords
+        +List~String~ aaaaRecords
+        +List~String~ cnameRecords
+        +List~String~ txtRecords
+    }
+
+    class DiscoveryData {
         +List~String~ technologies
         +List~String~ socialLinks
         +List~String~ socialProfileSummaries
@@ -139,11 +168,8 @@ classDiagram
         +List~String~ nameMentions
         +List~String~ nameMentionUrls
         +int dorkFindings
-        +SerpSearchResult serperRawData
         +List~String~ foundDocuments
         +List~String~ discoveredUrls
-        +RdapData rdap
-        +fromEntity(Lead) LeadResponse
     }
 
     class DnsResult {
@@ -157,7 +183,7 @@ classDiagram
     }
 
     class RdapData {
-        +Object rawJson
+        +JsonNode rawJson
         +String registrar
         +String registrantName
         +String registrantEmail
@@ -200,6 +226,8 @@ classDiagram
 
     LeadRepository --> Lead : consulta
     LeadResponse --> Lead : fromEntity()
+    LeadResponse --> DnsRecords : contém
+    LeadResponse --> DiscoveryData : contém
     LeadResponse --> RdapData : contém
     LeadResponse --> SerpSearchResult : contém
     SerpSearchResult --> SerpResultItem : contém
@@ -245,14 +273,11 @@ sequenceDiagram
         LS->>DNS: lookupDomain(domain)
         DNS-->>LS: DnsResult (MX, A, AAAA, CNAME, TXT)
 
-        LS->>TSS: scrapeAndDetect(domain)
-        TSS-->>LS: tecnologias, exposedEmails,<br/>nameMentions, discoveredUrls
+        LS->>TSS: scrapeTechnologiesAndCheckName(domain, name)
+        TSS-->>LS: tecnologias, exposedEmails,<br/>nameMentions, discoveredUrls<br/>⚡ 1 chamada HTTP combinada
 
         LS->>SDS: discoverSocialLinks(domain)
-        SDS-->>LS: List~socialLinks~
-
-        LS->>SDS: scrapeSocialProfiles(socialLinks)
-        SDS-->>LS: List~SocialProfileData~
+        SDS-->>LS: List~socialLinks~, List~SocialProfileData~
 
         LS->>RS: lookup(domain)
         RS-->>LS: RdapData (registrar,<br/>titular, datas, NS, CPF/CNPJ)

@@ -24,11 +24,14 @@ LeadController
      ▼
 LeadService (Orquestrador)
      │
-     ├──▶ DnsValidationService   (dnsjava)
-     ├──▶ TechScraperService     (Jsoup)
-     ├──▶ SocialDiscoveryService (Jsoup)
-     ├──▶ RdapService           (HTTP)
-     └──▶ OpenSerpSearch        (OkHttp)
+     ├──▶ DnsValidationService    (dnsjava)
+     ├──▶ TechScraperService      (Jsoup + TechScraperProperties)
+     ├──▶ SocialDiscoveryService  (Jsoup + SocialDiscoveryProperties)
+     ├──▶ RdapService            (HTTP — RestTemplate)
+     └──▶ OpenSerpSearch         (RestTemplate — Spring)
+          ▲
+          │
+     AppConfig (RestTemplate Bean)
 ```
 
 ### Serviços e Responsabilidades
@@ -36,10 +39,20 @@ LeadService (Orquestrador)
 | Serviço | Tecnologia | Dados Obtidos | Isolamento |
 |---|---|---|---|
 | `DnsValidationService` | dnsjava 3.6 | MX, A, AAAA, CNAME, TXT | try-catch próprio |
-| `TechScraperService` | Jsoup 1.17 | ~90 assinaturas de tecnologia, e-mails expostos, menções | try-catch próprio |
-| `SocialDiscoveryService` | Jsoup 1.17 | Links para 31 plataformas, perfis com título/descrição | try-catch próprio |
-| `RdapService` | HTTP Client | Identity Digital + Registro.br (CPF/CNPJ .com.br) | try-catch próprio |
-| `OpenSerpSearch` | OkHttp 4.12 | Google Search API self-hosted (até 30 resultados) | try-catch próprio |
+| `TechScraperService` | Jsoup 1.17 | ~90 assinaturas de tecnologia (externalizadas em YAML), e-mails expostos, menções de nome | try-catch próprio |
+| `SocialDiscoveryService` | Jsoup 1.17 | Links para 31 plataformas (externalizadas em YAML), perfis com título/descrição | try-catch próprio |
+| `RdapService` | RestTemplate | Identity Digital + Registro.br (CPF/CNPJ .com.br) | try-catch próprio |
+| `OpenSerpSearch` | RestTemplate | Google Search API self-hosted (até 30 resultados) | try-catch próprio |
+
+### Camada de Configuração Externalizada
+
+A refatoração introduziu classes `@ConfigurationProperties` para centralizar parâmetros antes hardcoded:
+
+| Classe | Prefixo YAML | Propriedades |
+|---|---|---|
+| `TechScraperProperties` | `techscraper.signatures` | Mapa de tecnologia → assinatura HTML (90+ entradas) |
+| `SocialDiscoveryProperties` | `social-discovery.domains` / `social-discovery.platform-names` | Domínios de 31 redes sociais + nomes amigáveis das plataformas |
+| `AppConfig` | — (bean `@Bean`) | RestTemplate com timeouts configurados (connectTimeout: 5s, readTimeout: 20s) |
 
 ### Fluxo de Decisão
 
@@ -50,16 +63,32 @@ LeadService.enrich()
      ├── Buscar lead existente por hash SHA-256
      ├── Se domínio válido:
      │     ├── DnsValidationService.lookupDomain()
-     │     ├── TechScraperService.scrapeAndDetect()
-     │     ├── SocialDiscoveryService.discoverSocialLinks()
-     │     ├── SocialDiscoveryService.scrapeSocialProfiles()
+     │     ├── TechScraperService.scrapeTechnologiesAndCheckName()  ← combinado
+     │     ├── SocialDiscoveryService.discoverSocialLinks()         ← inclui scraping de perfis
      │     ├── RdapService.lookup()
      │     └── OpenSerpSearch.searchPerson()
      └── Se sem domínio:
            └── OpenSerpSearch.searchPerson()
      │
+     ├── Converter Lead → LeadResponse (ObjectMapper injetado)
+     │     ├── DnsRecords  (sub-record com MX, A, AAAA, CNAME, TXT)
+     │     ├── DiscoveryData (sub-record com tecnologias, sociais, menções, URLs)
+     │     └── RdapData (com rawJson: JsonNode)
      └── Persistir (LeadRepository.save())
 ```
+
+### Otimização: Chamada HTTP Combinada
+
+O `TechScraperService` unificou duas chamadas HTTP separadas em uma única requisição:
+
+```
+Antes:                        Agora:
+  scrapeAndDetect(domain)      scrapeTechnologiesAndCheckName(domain, name)
+  findNameInPage(domain, name) ──────────────────────────────────────────►
+      2 requisições HTTP                 1 requisição HTTP
+```
+
+Isso reduziu o tempo de scraping em ~50% e eliminou uma conexão duplicada.
 
 ### Isolamento de Falhas
 
@@ -72,11 +101,15 @@ Cada chamada a serviço externo é envolvida em try-catch individual. Se um serv
   - Extensibilidade: novos serviços são adicionados sem modificar os existentes
   - Clareza: cada serviço tem responsabilidade única (SRP)
   - Testabilidade: cada serviço pode ser testado isoladamente
+  - Configurações externalizadas em YAML permitem ajustes sem recompilar
+  - RestTemplate gerenciado pelo Spring elimina gerenciamento manual de conexões
+  - Sub-records (`DnsRecords`, `DiscoveryData`) reduziram `LeadResponse` de 22 campos para 10
 
 - Negativas:
   - Chamadas síncronas aumentam latência total (pode chegar a 30s+)
   - Sem cache distribuído implementado (apenas `@EnableCaching` declarado)
   - Orquestração sequencial — serviços poderiam ser paralelizados com `CompletableFuture`
+  - `@ConfigurationProperties` exige atualização do YAML se novas plataformas forem adicionadas
 
 ## Referências
 

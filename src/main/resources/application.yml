@@ -43,6 +43,188 @@ management:
       probes:
         enabled: true
 
+social-discovery:
+  social-domains:
+    - facebook.com
+    - fb.com
+    - linkedin.com
+    - instagram.com
+    - twitter.com
+    - x.com
+    - youtube.com
+    - youtu.be
+    - tiktok.com
+    - pinterest.com
+    - pinterest.ca
+    - snapchat.com
+    - reddit.com
+    - tumblr.com
+    - whatsapp.com
+    - telegram.org
+    - t.me
+    - discord.com
+    - discord.gg
+    - twitch.tv
+    - medium.com
+    - behance.net
+    - dribbble.com
+    - github.com
+    - gitlab.com
+    - bitbucket.org
+    - stackoverflow.com
+    - slideshare.net
+    - scribd.com
+    - issuu.com
+    - calendly.com
+    - linktr.ee
+    - threads.net
+  platform-names:
+    github.com: "GitHub"
+    gitlab.com: "GitLab"
+    bitbucket.org: "Bitbucket"
+    linkedin.com: "LinkedIn"
+    instagram.com: "Instagram"
+    facebook.com: "Facebook"
+    fb.com: "Facebook"
+    twitter.com: "X (Twitter)"
+    x.com: "X (Twitter)"
+    youtube.com: "YouTube"
+    youtu.be: "YouTube"
+    tiktok.com: "TikTok"
+    medium.com: "Medium"
+    behance.net: "Behance"
+    dribbble.com: "Dribbble"
+    twitch.tv: "Twitch"
+    reddit.com: "Reddit"
+    stackoverflow.com: "Stack Overflow"
+    pinterest.com: "Pinterest"
+    calendly.com: "Calendly"
+    linktr.ee: "Linktree"
+    threads.net: "Threads"
+    slideshare.net: "SlideShare"
+    scribd.com: "Scribd"
+    issuu.com: "Issuu"
+    discord.com: "Discord"
+    discord.gg: "Discord"
+    telegram.org: "Telegram"
+    t.me: "Telegram"
+    whatsapp.com: "WhatsApp"
+
+techscraper:
+  signatures:
+    WordPress: ["wp-content", "wp-includes", "wordpress"]
+    Laravel: ["laravel", "csrf-token"]
+    Drupal: ["drupal", "drupal.js", "sites/default"]
+    Joomla: ["joomla", "com_content", "com_users"]
+    Magento: ["mage/", "mage-cache", "Magento"]
+    Squarespace: ["squarespace.com", "squarespace"]
+    Webflow: ["webflow", "webflow.js"]
+    "Adobe Experience Manager": ["aem", "cq-", "adobedtm"]
+    jQuery: ["jquery"]
+    React: ["react.js", "react.development.js", "react.production.min.js", "_next/static"]
+    Vue.js: ["vue.js", "vue.min.js"]
+    Angular: ["angular.js", "angular.min.js", "ng-app"]
+    Next.js: ["_next/static", "__NEXT_DATA__", "next.js"]
+    Nuxt.js: ["_nuxt/", "__NUXT__"]
+    Gatsby: ["gatsby", "gatsby-config"]
+    Alpine.js: ["alpinejs", "alpine.js"]
+    Svelte: ["svelte"]
+    Bootstrap: ["bootstrap.css", "bootstrap.min.css", "bootstrap.js", "bootstrap.min.js"]
+    "Tailwind CSS": ["tailwindcss", "tailwind"]
+    Materialize: ["materialize", "materialize.css"]
+    "Font Awesome": ["font-awesome", "fontawesome"]
+    "Google Tag Manager": ["gtm.js", "googletagmanager.com"]
+    "Google Analytics": ["analytics.js", "ga.js", "gtag"]
+    Hotjar: ["hotjar"]
+    HubSpot: ["hubspot"]
+    Intercom: ["intercom"]
+    "Twitter Pixel": ["twttr"]
+    "TikTok Pixel": ["tiktok"]
+    "Facebook Pixel": ["facebook", "fbq"]
+    "Microsoft Clarity": ["clarity"]
+    "Yandex Metrica": ["mc.yandex", "yandex_metrika"]
+    Matomo: ["matomo", "piwik"]
+    Cloudflare: ["cloudflare", "__cfduid"]
+    "Cloudflare Protection": ["__cf_chl_tk", "cf_chl_prog", "challenge-platform"]
+    CloudFront: ["cloudfront.net"]
+    Fastly: ["fastly"]
+    Akamai: ["akamai"]
+    Shopify: ["shopify.com", "myshopify.com", "/cdn/shop/"]
+    Wix: ["wix.com", "wixstatic.com"]
+    OpenCart: ["opencart", "route=common"]
+    PrestaShop: ["prestashop"]
+    Stripe: ["stripe.com", "checkout.stripe"]
+    PayPal: ["paypal.com", "paypalobjects"]
+    "Mercado Pago": ["mercadopago"]
+    "Google Fonts": ["fonts.googleapis"]
+    "Adobe Fonts": ["typekit.net", "use.typekit"]
+    Sentry: ["sentry"]
+    "New Relic": ["newrelic"]
+    CookieYes: ["cookieyes"]
+    Cookiebot: ["cookiebot"]
+    OneTrust: ["onetrust"]
+    YouTube: ["youtube.com/embed", "youtube-nocookie"]
+    Vimeo: ["vimeo.com"]
+    "Google Maps": ["maps.googleapis", "maps.google"]
+    reCAPTCHA: ["recaptcha", "g-recaptcha"]
+    Disqus: ["disqus"]
+    Zendesk: ["zendesk"]
+    LiveChat: ["livechat"]
+
+  script-detectors:
+    "Facebook Pixel": ["facebook", "fbq"]
+    Hotjar: ["hotjar"]
+    "LinkedIn Insights": ["linkedin"]
+    "Google Analytics 4": ["gtag", "ga4"]
+    HubSpot: ["hs-analytics", "hubspot"]
+    Intercom: ["intercom"]
+    "TikTok Pixel": ["tiktok"]
+    "Microsoft Clarity": ["clarity"]
+    FullStory: ["fullstory"]
+    Mixpanel: ["mixpanel"]
+    Amplitude: ["amplitude"]
+    Segment: ["segment"]
+    Stripe: ["stripe", "checkout"]
+    PayPal: ["paypal"]
+    "Cloudflare Web Analytics": ["cloudflare-insights"]
+    Sentry: ["sentry", "raven"]
+    "New Relic": ["newrelic", "nr-agent"]
+    VWO: ["vwo", "visual-website-optimizer"]
+    Optimizely: ["optimizely"]
+    "Twitter Pixel": ["twttr", "twitter-widgets"]
+
+  meta-generators:
+    wordpress: "WordPress"
+    laravel: "Laravel"
+    drupal: "Drupal"
+    joomla: "Joomla"
+    magento: "Magento"
+    blogger: "Blogger"
+    expressionengine: "ExpressionEngine"
+    ghost: "Ghost"
+    hugo: "Hugo"
+    jekyll: "Jekyll"
+    gatsby: "Gatsby"
+    next.js: "Next.js"
+    nuxt: "Nuxt"
+    squarespace: "Squarespace"
+    wix: "Wix"
+    webflow: "Webflow"
+    sitecore: "Sitecore"
+    umbraco: "Umbraco"
+    concrete5: "Concrete CMS"
+    prestashop: "PrestaShop"
+    shopify: "Shopify"
+    typo3: "TYPO3"
+    spip: "SPIP"
+    dotnetnuke: "DNN (DotNetNuke)"
+    zend: "Zend CMS"
+    silverstripe: "SilverStripe"
+    octobercms: "October CMS"
+    statamic: "Statamic"
+    craft: "Craft CMS"
+    grav: "Grav"
+
 logging:
   level:
     root: INFO

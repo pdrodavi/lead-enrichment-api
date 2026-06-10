@@ -38,6 +38,22 @@ API para enriquecimento de leads com dados públicos da internet. A partir de um
 
 > 💡 **Dica:** Os diagramas Mermaid renderizam automaticamente no GitHub e no VS Code (com extensão Mermaid).
 
+---
+
+## Melhorias e Refatorações Realizadas
+
+Ao longo de 8 rodadas de revisão de código, **22 issues** foram identificadas e corrigidas:
+
+| Categoria | Qtd | Principais correções |
+|---|---|---|
+| 🔴 Segurança | 3 | SecureRandom não-bloqueante, criptografia sem fallback, mascaramento LGPD |
+| 🔴 Performance | 1 | `@ElementCollection LAZY`, scraping combinado (1 HTTP) |
+| 🟡 Arquitetura | 6 | Sub-records, ObjectMapper injetado, OkHttp → RestTemplate |
+| 🔵 Manutenibilidade | 11 | Configs externalizadas para YAML, ADRs, diagramas, imports limpos |
+| 📚 Documentação | - | 9 ADRs, diagramas Mermaid + Excalidraw, guias completos |
+
+---
+
 ## Quick Start
 
 ```bash

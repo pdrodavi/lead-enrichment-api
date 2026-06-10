@@ -35,7 +35,7 @@ graph TB
         TSS -->|"Jsoup"| WEB[Site do Domínio]
         SDS -->|"Jsoup"| SOCIAL[Redes Sociais]
         RS -->|"HTTP"| RDAP[Identity Digital / Registro.br]
-        OSS -->|"OkHttp"| OS[OpenSERP Self-hosted]
+        OSS -->|"RestTemplate"| OS[OpenSERP Self-hosted]
     end
 
     subgraph "Criptografia"
@@ -43,6 +43,23 @@ graph TB
         EEC --> ES[EncryptionService<br/>AES-128-GCM]
     end
 ```
+
+## Stack Tecnológica Atualizada
+
+| Tecnologia | Versão | Função | Gerenciamento |
+|---|---|---|---|
+| **Java** | 17 | Runtime | — |
+| **Spring Boot** | 3.3.13 | Framework web, JPA, Actuator | Spring |
+| **Spring Data JPA** | 3.3.x | ORM + Hibernate 6.x | Spring |
+| **PostgreSQL** | 16 | Banco de dados relacional | Docker |
+| **dnsjava** | 3.6.0 | Consultas DNS (MX, A, AAAA, CNAME, TXT) | Maven |
+| **Jsoup** | 1.17.2 | Scraping HTML | Maven |
+| **RestTemplate** | (Spring) | Cliente HTTP (OpenSERP) | Spring Bean (AppConfig) |
+| **Gson** | 2.11.0 | Parse de JSON (OpenSERP) | Maven |
+| **SpringDoc OpenAPI** | 2.5.0 | Swagger UI | Maven |
+| **Lombok** | - | Redução de boilerplate | Maven |
+
+> **Migrações relevantes:** OkHttp 4.12 foi removido — `RestTemplate` com connection pooling gerido pelo Spring substitui o cliente HTTP manual. Configurações de tecnologia e redes sociais foram externalizadas para `application.yml` via `@ConfigurationProperties`.
 
 ## Diagrama de Componentes
 
@@ -54,6 +71,12 @@ graph LR
         GHE[GlobalExceptionHandler]
         EEC[EncryptedEmailConverter]
         ES[EncryptionService]
+        APP[AppConfig<br/>RestTemplate Bean]
+    end
+
+    subgraph "Properties"
+        TCP[TechScraperProperties<br/>signatures, scriptDetectors, metaGenerators]
+        SDP[SocialDiscoveryProperties<br/>socialDomains, platformNames]
     end
 
     subgraph "Controller"
@@ -80,12 +103,15 @@ graph LR
     subgraph "DTOs"
         LRQ[LeadRequest]
         LRSP[LeadResponse]
-        DR[DnsResult]
+        DNSREC[DnsRecords<br/>sub-record]
+        DISCV[DiscoveryData<br/>sub-record]
         RD[RdapData]
         SPD[SocialProfileData]
-        SPD2[ScrapedPageData]
+        SCRDATA[ScrapedPageData]
         SSR[SerpSearchResult]
         SRI[SerpResultItem]
+        DR[DnsResult]
+        SCR[ScrapeResult<br/>inner record]
     end
 
     LC --> LS
@@ -98,9 +124,15 @@ graph LR
     LREPO --> L
     LC --> LRQ
     LC --> LRSP
+    LRSP --> DNSREC
+    LRSP --> DISCV
+    LRSP --> RD
+    TSS --> TCP
+    SDS --> SDP
+    OSS --> APP
 ```
 
-## Fluxo de Enriquecimento
+## Fluxo de Enriquecimento (otimizado)
 
 ```mermaid
 sequenceDiagram
@@ -108,70 +140,69 @@ sequenceDiagram
     participant AK as ApiKeyFilter
     participant LC as LeadController
     participant LS as LeadService
-    participant DNS as DnsValidationService
     participant TSS as TechScraperService
-    participant SDS as SocialDiscoveryService
+    participant DNS as DnsValidation
+    participant SDS as SocialDiscovery
     participant RS as RdapService
     participant OSS as OpenSerpSearch
     participant DB as PostgreSQL
 
-    C->>AK: POST /api/v1/leads/enrich<br/>X-API-KEY + JSON
-    AK->>AK: Valida API Key
+    C->>AK: POST /api/v1/leads/enrich
+    AK->>AK: Valida X-API-KEY
+    alt Chave inválida
+        AK-->>C: 401 Unauthorized
+    end
     AK->>LC: Encaminha requisição
-
+    LC->>LC: @Valid — valida campos
+    alt Dados inválidos
+        LC-->>C: 400 Bad Request
+    end
     LC->>LS: enrich(email, domain, name)
-
-    LS->>LS: Extrai domínio do e-mail (se não informado)
-    LS->>LS: Gera hash SHA-256 do e-mail
+    LS->>LS: Extrai domínio do e-mail
+    LS->>LS: Gera hash SHA-256(email)
     LS->>DB: findByEmailHash(hash)
-    DB-->>LS: Lead existente ou null
+    DB-->>LS: Lead existente (ou null)
 
     alt Domínio válido
         LS->>DNS: lookupDomain(domain)
         DNS-->>LS: DnsResult (MX, A, AAAA, CNAME, TXT)
 
-        LS->>TSS: scrapeAndDetect(domain)
-        TSS-->>LS: List<tech>, List<exposedEmails>,<br/>List<nameMentions>, List<allUrls>
+        Note over LS,TSS: ⚡ UMA requisição HTTP combinada
+        LS->>TSS: scrapeTechnologiesAndCheckName(domain, name)
+        TSS-->>LS: ScrapeResult(technologies, nameMentions)
 
         LS->>SDS: discoverSocialLinks(domain)
-        SDS-->>LS: List<socialLinks>
-
+        SDS-->>LS: socialLinks
         LS->>SDS: scrapeSocialProfiles(socialLinks)
-        SDS-->>LS: List<SocialProfileData>
+        SDS-->>LS: SocialProfileData
 
         LS->>RS: lookup(domain)
         RS-->>LS: RdapData
 
-        LS->>OSS: searchPerson(name, limit)
-        OSS-->>LS: JsonArray (resultados Google)
+        LS->>OSS: searchPerson(name, 30)
+        OSS-->>LS: JsonArray (via RestTemplate)
     else Sem domínio
-        LS->>OSS: searchPerson(name, limit)
-        OSS-->>LS: JsonArray (resultados Google)
+        LS->>OSS: searchPerson(name, 30)
+        OSS-->>LS: JsonArray
     end
 
-    LS->>DB: save(lead)
+    LS->>DB: save(lead) — AES-GCM
     DB-->>LS: Lead persistido
 
     LS-->>LC: Lead enriquecido
-    LC-->>C: 200 + List<LeadResponse>
+    LC-->>C: 200 OK + List~LeadResponse~
 ```
 
-## Stack Tecnológica
+## Novos Componentes (pós-refatoração)
 
-| Tecnologia | Versão | Função |
+| Componente | Tipo | Função |
 |---|---|---|
-| **Java** | 17 | Runtime |
-| **Spring Boot** | 3.3.13 | Framework web, JPA, Actuator |
-| **Spring Data JPA** | 3.3.x | ORM + Hibernate 6.x |
-| **PostgreSQL** | 16 | Banco de dados relacional |
-| **dnsjava** | 3.6.0 | Consultas DNS (MX, A, AAAA, CNAME, TXT) |
-| **Jsoup** | 1.17.2 | Scraping HTML |
-| **OkHttp** | 4.12.0 | Cliente HTTP para OpenSERP |
-| **Gson** | 2.11.0 | Parse de JSON |
-| **SpringDoc OpenAPI** | 2.5.0 | Swagger UI |
-| **Lombok** | - | Redução de boilerplate |
-| **Docker** | - | Containerização |
-| **OpenSERP** | latest | Google Search API self-hosted |
+| `AppConfig` | `@Configuration` | Bean de `RestTemplate` com timeouts (5s connect, 20s read) |
+| `TechScraperProperties` | `@ConfigurationProperties` | ~115 assinaturas tecnológicas carregadas do `application.yml` |
+| `SocialDiscoveryProperties` | `@ConfigurationProperties` | 31 domínios sociais + 30 nomes de plataforma do `application.yml` |
+| `DnsRecords` | `record` | Sub-record que agrupa mxStatus + 5 listas DNS |
+| `DiscoveryData` | `record` | Sub-record com tecnologias, redes sociais, menções, OpenSERP |
+| `ScrapeResult` | `record` | Resultado combinado de scraping + verificação de nome (1 HTTP) |
 
 ## Estrutura do Projeto
 

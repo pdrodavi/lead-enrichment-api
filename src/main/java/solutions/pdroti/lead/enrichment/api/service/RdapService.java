@@ -227,7 +227,7 @@ public class RdapService {
             }
 
             return new RdapData(
-                    json, registrar, registrantName, registrantEmail,
+                    root, registrar, registrantName, registrantEmail,
                     registrationDate, expirationDate,
                     nameservers, status, taxpayerId, source
             );

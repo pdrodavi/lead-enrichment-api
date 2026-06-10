@@ -1,9 +1,11 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
+import solutions.pdroti.lead.enrichment.api.config.TechScraperProperties;
 import solutions.pdroti.lead.enrichment.api.dto.ScrapedPageData;
 
 import java.util.ArrayList;
@@ -15,148 +17,13 @@ import java.util.Set;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class TechScraperService {
 
     private static final int TIMEOUT_MS = 10_000;
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
-    private static final Map<String, List<String>> SCRIPT_DETECTORS = Map.ofEntries(
-            Map.entry("Facebook Pixel", List.of("facebook", "fbq")),
-            Map.entry("Hotjar", List.of("hotjar")),
-            Map.entry("LinkedIn Insights", List.of("linkedin")),
-            Map.entry("Google Analytics 4", List.of("gtag", "ga4")),
-            Map.entry("HubSpot", List.of("hs-analytics", "hubspot")),
-            Map.entry("Intercom", List.of("intercom")),
-            Map.entry("TikTok Pixel", List.of("tiktok")),
-            Map.entry("Microsoft Clarity", List.of("clarity")),
-            Map.entry("FullStory", List.of("fullstory")),
-            Map.entry("Mixpanel", List.of("mixpanel")),
-            Map.entry("Amplitude", List.of("amplitude")),
-            Map.entry("Segment", List.of("segment")),
-            Map.entry("Stripe", List.of("stripe", "checkout")),
-            Map.entry("PayPal", List.of("paypal")),
-            Map.entry("Cloudflare Web Analytics", List.of("cloudflare-insights")),
-            Map.entry("Sentry", List.of("sentry", "raven")),
-            Map.entry("New Relic", List.of("newrelic", "nr-agent")),
-            Map.entry("VWO", List.of("vwo", "visual-website-optimizer")),
-            Map.entry("Optimizely", List.of("optimizely")),
-            Map.entry("Twitter Pixel", List.of("twttr", "twitter-widgets"))
-    );
-
-    private static final Map<String, List<String>> SIGNATURES = Map.ofEntries(
-            // CMS / Frameworks
-            Map.entry("WordPress", List.of("wp-content", "wp-includes", "wordpress")),
-            Map.entry("Laravel", List.of("laravel", "csrf-token")),
-            Map.entry("Drupal", List.of("drupal", "drupal.js", "sites/default")),
-            Map.entry("Joomla", List.of("joomla", "com_content", "com_users")),
-            Map.entry("Magento", List.of("mage/", "mage-cache", "Magento")),
-            Map.entry("Squarespace", List.of("squarespace.com", "squarespace")),
-            Map.entry("Webflow", List.of("webflow", "webflow.js")),
-            Map.entry("Adobe Experience Manager", List.of("aem", "cq-", "adobedtm")),
-
-            // JavaScript frameworks
-            Map.entry("jQuery", List.of("jquery")),
-            Map.entry("React", List.of("react.js", "react.development.js", "react.production.min.js", "_next/static")),
-            Map.entry("Vue.js", List.of("vue.js", "vue.min.js")),
-            Map.entry("Angular", List.of("angular.js", "angular.min.js", "ng-app")),
-            Map.entry("Next.js", List.of("_next/static", "__NEXT_DATA__", "next.js")),
-            Map.entry("Nuxt.js", List.of("_nuxt/", "__NUXT__")),
-            Map.entry("Gatsby", List.of("gatsby", "gatsby-config")),
-            Map.entry("Alpine.js", List.of("alpinejs", "alpine.js")),
-            Map.entry("Svelte", List.of("svelte")),
-
-            // CSS / UI frameworks
-            Map.entry("Bootstrap", List.of("bootstrap.css", "bootstrap.min.css", "bootstrap.js", "bootstrap.min.js")),
-            Map.entry("Tailwind CSS", List.of("tailwindcss", "tailwind")),
-            Map.entry("Materialize", List.of("materialize", "materialize.css")),
-            Map.entry("Font Awesome", List.of("font-awesome", "fontawesome")),
-
-            // Analytics & Marketing
-            Map.entry("Google Tag Manager", List.of("gtm.js", "googletagmanager.com")),
-            Map.entry("Google Analytics", List.of("analytics.js", "ga.js", "gtag")),
-            Map.entry("Hotjar", List.of("hotjar")),
-            Map.entry("HubSpot", List.of("hubspot")),
-            Map.entry("Intercom", List.of("intercom")),
-            Map.entry("Twitter Pixel", List.of("twttr")),
-            Map.entry("TikTok Pixel", List.of("tiktok")),
-            Map.entry("Facebook Pixel", List.of("facebook", "fbq")),
-            Map.entry("Microsoft Clarity", List.of("clarity")),
-            Map.entry("Yandex Metrica", List.of("mc.yandex", "yandex_metrika")),
-            Map.entry("Matomo", List.of("matomo", "piwik")),
-
-            // Infra & CDN
-            Map.entry("Cloudflare", List.of("cloudflare", "__cfduid")),
-            Map.entry("Cloudflare Protection", List.of("__cf_chl_tk", "cf_chl_prog", "challenge-platform")),
-            Map.entry("CloudFront", List.of("cloudfront.net")),
-            Map.entry("Fastly", List.of("fastly")),
-            Map.entry("Akamai", List.of("akamai")),
-
-            // E-commerce
-            Map.entry("Shopify", List.of("shopify.com", "myshopify.com", "/cdn/shop/")),
-            Map.entry("Wix", List.of("wix.com", "wixstatic.com")),
-            Map.entry("OpenCart", List.of("opencart", "route=common")),
-            Map.entry("PrestaShop", List.of("prestashop")),
-
-            // Payment
-            Map.entry("Stripe", List.of("stripe.com", "checkout.stripe")),
-            Map.entry("PayPal", List.of("paypal.com", "paypalobjects")),
-            Map.entry("Mercado Pago", List.of("mercadopago")),
-
-            // Fonts
-            Map.entry("Google Fonts", List.of("fonts.googleapis")),
-            Map.entry("Adobe Fonts", List.of("typekit.net", "use.typekit")),
-
-            // Error tracking
-            Map.entry("Sentry", List.of("sentry")),
-            Map.entry("New Relic", List.of("newrelic")),
-
-            // Consent / Privacy
-            Map.entry("CookieYes", List.of("cookieyes")),
-            Map.entry("Cookiebot", List.of("cookiebot")),
-            Map.entry("OneTrust", List.of("onetrust")),
-
-            // Embedded services
-            Map.entry("YouTube", List.of("youtube.com/embed", "youtube-nocookie")),
-            Map.entry("Vimeo", List.of("vimeo.com")),
-            Map.entry("Google Maps", List.of("maps.googleapis", "maps.google")),
-            Map.entry("reCAPTCHA", List.of("recaptcha", "g-recaptcha")),
-            Map.entry("Disqus", List.of("disqus")),
-            Map.entry("Zendesk", List.of("zendesk")),
-            Map.entry("LiveChat", List.of("livechat"))
-    );
-
-    private static final Map<String, String> META_GENERATORS = Map.ofEntries(
-            Map.entry("wordpress", "WordPress"),
-            Map.entry("laravel", "Laravel"),
-            Map.entry("drupal", "Drupal"),
-            Map.entry("joomla", "Joomla"),
-            Map.entry("magento", "Magento"),
-            Map.entry("blogger", "Blogger"),
-            Map.entry("expressionengine", "ExpressionEngine"),
-            Map.entry("ghost", "Ghost"),
-            Map.entry("hugo", "Hugo"),
-            Map.entry("jekyll", "Jekyll"),
-            Map.entry("gatsby", "Gatsby"),
-            Map.entry("next.js", "Next.js"),
-            Map.entry("nuxt", "Nuxt"),
-            Map.entry("squarespace", "Squarespace"),
-            Map.entry("wix", "Wix"),
-            Map.entry("webflow", "Webflow"),
-            Map.entry("sitecore", "Sitecore"),
-            Map.entry("umbraco", "Umbraco"),
-            Map.entry("concrete5", "Concrete CMS"),
-            Map.entry("prestashop", "PrestaShop"),
-            Map.entry("shopify", "Shopify"),
-            Map.entry("typo3", "TYPO3"),
-            Map.entry("spip", "SPIP"),
-            Map.entry("dotnetnuke", "DNN (DotNetNuke)"),
-            Map.entry("zend", "Zend CMS"),
-            Map.entry("silverstripe", "SilverStripe"),
-            Map.entry("octobercms", "October CMS"),
-            Map.entry("statamic", "Statamic"),
-            Map.entry("craft", "Craft CMS"),
-            Map.entry("grav", "Grav")
-    );
+    private final TechScraperProperties properties;
 
     enum ScrapeError {
         TIMEOUT("Timeout", (e, msg) ->
@@ -265,7 +132,7 @@ public class TechScraperService {
      * Centraliza a lógica de detecção usada por {@link #scrapeTechnologies}
      * e {@link #scrapePage}, evitando duplicação.
      */
-    private static void detectTechnologies(Document doc, Set<String> technologies) {
+    private void detectTechnologies(Document doc, Set<String> technologies) {
         String html = doc.html().toLowerCase();
         detectByHtmlSignatures(html, technologies);
         detectByScriptSrc(doc, technologies);
@@ -288,8 +155,8 @@ public class TechScraperService {
     }
 
     /** Detecta tecnologias por assinaturas no HTML (strings características). */
-    private static void detectByHtmlSignatures(String html, Set<String> technologies) {
-        SIGNATURES.forEach((tech, sigs) -> {
+    private void detectByHtmlSignatures(String html, Set<String> technologies) {
+        properties.getSignatures().forEach((tech, sigs) -> {
             if (sigs.stream().anyMatch(html::contains)) {
                 technologies.add(tech);
             }
@@ -297,10 +164,10 @@ public class TechScraperService {
     }
 
     /** Detecta tecnologias por atributo src em scripts (ex: Facebook Pixel, Hotjar). */
-    private static void detectByScriptSrc(Document doc, Set<String> technologies) {
+    private void detectByScriptSrc(Document doc, Set<String> technologies) {
         doc.select("script[src]").forEach(script -> {
             String src = script.attr("src").toLowerCase();
-            SCRIPT_DETECTORS.forEach((tech, keywords) -> {
+            properties.getScriptDetectors().forEach((tech, keywords) -> {
                 if (keywords.stream().anyMatch(src::contains)) {
                     technologies.add(tech);
                 }
@@ -309,13 +176,13 @@ public class TechScraperService {
     }
 
     /** Detecta tecnologias via meta tags (generator, CSRF token, etc.). */
-    private static void detectByMetaTags(Document doc, Set<String> technologies) {
+    private void detectByMetaTags(Document doc, Set<String> technologies) {
         doc.select("meta[name]").forEach(meta -> {
             String name = meta.attr("name").toLowerCase();
             String content = meta.attr("content").toLowerCase();
 
             if ("generator".equals(name)) {
-                META_GENERATORS.forEach((key, tech) -> {
+                properties.getMetaGenerators().forEach((key, tech) -> {
                     if (content.contains(key)) technologies.add(tech);
                 });
             }
@@ -441,7 +308,50 @@ public class TechScraperService {
                 .toList();
     }
 
+    /**
+     * Scrapeia tecnologias E verifica nome na página em UMA ÚNICA requisição HTTP.
+     * Evita o problema de duas chamadas HTTP separadas para o mesmo domínio.
+     */
+    public ScrapeResult scrapeTechnologiesAndCheckName(String domain, String name) {
+        if (domain == null || domain.isBlank()) {
+            return new ScrapeResult(List.of(), List.of());
+        }
 
+        Set<String> technologies = new LinkedHashSet<>();
+        List<String> nameMentions = new ArrayList<>();
+
+        try {
+            Document doc = fetchDocument(normalizeUrl(domain));
+            detectTechnologies(doc, technologies);
+
+            if (name != null && !name.isBlank()) {
+                String pageText = doc.text();
+                String pageUrl = "https://" + domain;
+
+                if (nameMatchesExactly(pageText, name)) {
+                    nameMentions.add("Nome completo encontrado em: " + pageUrl);
+                }
+                String title = doc.title();
+                if (nameMatchesExactly(title, name)) {
+                    nameMentions.add("Nome completo encontrado no título da página: " + pageUrl);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Erro ao scrapear {}: {}", domain, e.getMessage());
+            if (technologies.isEmpty()) {
+                handleScrapeError(e, technologies);
+            }
+        }
+
+        return new ScrapeResult(List.copyOf(technologies), nameMentions);
+    }
+
+    /**
+     * Resultado combinado de scraping + verificação de nome.
+     * Retornado por {@link #scrapeTechnologiesAndCheckName} para evitar
+     * múltiplas requisições HTTP ao mesmo domínio.
+     */
+    public record ScrapeResult(List<String> technologies, List<String> nameMentions) {}
 
     /**
      * Verifica se o nome de uma pessoa é mencionado no HTML da página do domínio.

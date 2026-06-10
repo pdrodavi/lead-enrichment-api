@@ -4,15 +4,12 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Cliente HTTP para a API do OpenSERP (self-hosted Google Search API).
@@ -35,29 +32,22 @@ public class OpenSerpSearch {
     /** Limite padrão de resultados por busca. */
     private static final int DEFAULT_LIMIT = 30;
 
-    /** Timeout curto para conexão (falha rápido se OpenSERP estiver offline). */
-    private static final int CONNECT_TIMEOUT_SECONDS = 5;
-
-    /** Timeout para leitura da resposta (20s para consultas lentas). */
-    private static final int READ_TIMEOUT_SECONDS = 20;
-
-    private final OkHttpClient client;
+    private final RestTemplate restTemplate;
     private final Gson gson;
     private final String baseUrl;
 
     /**
-     * Construtor que inicializa o cliente HTTP e a URL base.
+     * Construtor que inicializa o RestTemplate (gerenciado pelo Spring) e a URL base.
      * A URL é normalizada removendo sufixos como "/search" ou "/".
      *
-     * @param baseUrl URL base da API OpenSERP (padrão: http://localhost:7000)
+     * @param baseUrl      URL base da API OpenSERP (padrão: http://localhost:7000)
+     * @param restTemplate RestTemplate configurado com timeouts (injetado pelo Spring)
      */
-    public OpenSerpSearch(@Value("${serper.api.url:http://localhost:7000}") String baseUrl) {
+    public OpenSerpSearch(
+            @Value("${serper.api.url:http://localhost:7000}") String baseUrl,
+            RestTemplate restTemplate) {
         this.baseUrl = baseUrl.replace("/search", "").replaceAll("/$", "");
-        this.client = new OkHttpClient.Builder()
-                .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .writeTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .build();
+        this.restTemplate = restTemplate;
         this.gson = new Gson();
     }
 
@@ -76,17 +66,12 @@ public class OpenSerpSearch {
         String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8);
         String url = baseUrl + "/google/search?text=" + encodedName + "&limit=" + limit;
 
-        Request request = new Request.Builder()
-                .url(url)
-                .get()
-                .build();
-
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful() || response.body() == null) {
-                log.warn("OpenSERP retornou HTTP {} para '{}'", response.code(), name);
+        try {
+            String json = restTemplate.getForObject(url, String.class);
+            if (json == null) {
+                log.warn("OpenSERP retornou resposta vazia para '{}'", name);
                 return new JsonArray();
             }
-            String json = response.body().string();
             JsonObject root = gson.fromJson(json, JsonObject.class);
 
             JsonArray results = root.getAsJsonArray("results");
@@ -97,6 +82,9 @@ public class OpenSerpSearch {
 
             log.debug("OpenSERP: {} resultados para '{}' (limit={})", results.size(), name, limit);
             return results;
+        } catch (Exception e) {
+            log.warn("OpenSERP falhou para '{}': {}", name, e.getMessage());
+            return new JsonArray();
         }
     }
 
@@ -132,23 +120,16 @@ public class OpenSerpSearch {
                 String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
                 String url = baseUrl + "/google/search?text=" + encodedQuery + "&limit=" + limit;
 
-                Request request = new Request.Builder()
-                        .url(url)
-                        .get()
-                        .build();
-
-                try (Response response = client.newCall(request).execute()) {
-                    if (!response.isSuccessful() || response.body() == null) {
-                        log.debug("OpenSERP docs ({}): HTTP {} para '{}'", fileType, response.code(), name);
-                        continue;
-                    }
-                    String json = response.body().string();
-                    JsonObject root = gson.fromJson(json, JsonObject.class);
-                    JsonArray results = root.getAsJsonArray("results");
-                    if (results != null && !results.isEmpty()) {
-                        log.debug("OpenSERP docs ({}): {} resultados para '{}'", fileType, results.size(), name);
-                        all.addAll(results);
-                    }
+                String json = restTemplate.getForObject(url, String.class);
+                if (json == null) {
+                    log.debug("OpenSERP docs ({}): resposta vazia para '{}'", fileType, name);
+                    continue;
+                }
+                JsonObject root = gson.fromJson(json, JsonObject.class);
+                JsonArray results = root.getAsJsonArray("results");
+                if (results != null && !results.isEmpty()) {
+                    log.debug("OpenSERP docs ({}): {} resultados para '{}'", fileType, results.size(), name);
+                    all.addAll(results);
                 }
             } catch (Exception e) {
                 log.debug("OpenSERP docs falhou para filetype={} '{}': {}", fileType, name, e.getMessage());

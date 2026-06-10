@@ -1,24 +1,25 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Service;
+import solutions.pdroti.lead.enrichment.api.config.SocialDiscoveryProperties;
 import solutions.pdroti.lead.enrichment.api.dto.SocialProfileData;
 
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class SocialDiscoveryService {
 
     private static final int TIMEOUT_MS = 10_000;
@@ -26,35 +27,7 @@ public class SocialDiscoveryService {
     private static final String HTTPS_PREFIX = "https://";
     private static final String PROTOCOL_RELATIVE_PREFIX = "//";
 
-    private static final List<String> SOCIAL_DOMAINS = List.of(
-            "facebook.com", "fb.com",
-            "linkedin.com",
-            "instagram.com",
-            "twitter.com", "x.com",
-            "youtube.com", "youtu.be",
-            "tiktok.com",
-            "pinterest.com", "pinterest.ca",
-            "snapchat.com",
-            "reddit.com",
-            "tumblr.com",
-            "whatsapp.com",
-            "telegram.org", "t.me",
-            "discord.com", "discord.gg",
-            "twitch.tv",
-            "medium.com",
-            "behance.net",
-            "dribbble.com",
-            "github.com",
-            "gitlab.com",
-            "bitbucket.org",
-            "stackoverflow.com",
-            "slideshare.net",
-            "scribd.com",
-            "issuu.com",
-            "calendly.com",
-            "linktr.ee",
-            "threads.net"
-    );
+    private final SocialDiscoveryProperties properties;
 
     /** Busca links de redes sociais no HTML do domínio informado. */
     public List<String> discoverSocialLinks(String domain) {
@@ -101,7 +74,7 @@ public class SocialDiscoveryService {
     private boolean isSocialLink(String url) {
         if (url == null) return false;
         String lower = url.toLowerCase();
-        return SOCIAL_DOMAINS.stream().anyMatch(lower::contains);
+        return properties.getSocialDomains().stream().anyMatch(lower::contains);
     }
 
     /** Tenta normalizar URL relativa/absoluta para formato canônico (https://host/path/). */
@@ -156,44 +129,12 @@ public class SocialDiscoveryService {
      *
      * @return lista imutável de domínios sociais
      */
-    public static List<String> getSocialDomains() {
-        return SOCIAL_DOMAINS;
+    public List<String> getSocialDomains() {
+        return properties.getSocialDomains();
     }
 
     /** Mapa de identificadores de domínio → nome da plataforma. */
-    private static final Map<String, String> PLATFORM_NAMES = new LinkedHashMap<>();
-    static {
-        PLATFORM_NAMES.put("github.com", "GitHub");
-        PLATFORM_NAMES.put("gitlab.com", "GitLab");
-        PLATFORM_NAMES.put("bitbucket.org", "Bitbucket");
-        PLATFORM_NAMES.put("linkedin.com", "LinkedIn");
-        PLATFORM_NAMES.put("instagram.com", "Instagram");
-        PLATFORM_NAMES.put("facebook.com", "Facebook");
-        PLATFORM_NAMES.put("fb.com", "Facebook");
-        PLATFORM_NAMES.put("twitter.com", "X (Twitter)");
-        PLATFORM_NAMES.put("x.com", "X (Twitter)");
-        PLATFORM_NAMES.put("youtube.com", "YouTube");
-        PLATFORM_NAMES.put("youtu.be", "YouTube");
-        PLATFORM_NAMES.put("tiktok.com", "TikTok");
-        PLATFORM_NAMES.put("medium.com", "Medium");
-        PLATFORM_NAMES.put("behance.net", "Behance");
-        PLATFORM_NAMES.put("dribbble.com", "Dribbble");
-        PLATFORM_NAMES.put("twitch.tv", "Twitch");
-        PLATFORM_NAMES.put("reddit.com", "Reddit");
-        PLATFORM_NAMES.put("stackoverflow.com", "Stack Overflow");
-        PLATFORM_NAMES.put("pinterest.com", "Pinterest");
-        PLATFORM_NAMES.put("calendly.com", "Calendly");
-        PLATFORM_NAMES.put("linktr.ee", "Linktree");
-        PLATFORM_NAMES.put("threads.net", "Threads");
-        PLATFORM_NAMES.put("slideshare.net", "SlideShare");
-        PLATFORM_NAMES.put("scribd.com", "Scribd");
-        PLATFORM_NAMES.put("issuu.com", "Issuu");
-        PLATFORM_NAMES.put("discord.com", "Discord");
-        PLATFORM_NAMES.put("discord.gg", "Discord");
-        PLATFORM_NAMES.put("telegram.org", "Telegram");
-        PLATFORM_NAMES.put("t.me", "Telegram");
-        PLATFORM_NAMES.put("whatsapp.com", "WhatsApp");
-    }
+    // (externalizado para application.yml → social-discovery.platform-names)
 
     /**
      * Tenta fazer scraping de cada URL de rede social encontrada
@@ -227,7 +168,7 @@ public class SocialDiscoveryService {
     /** Identifica o nome da plataforma a partir da URL. */
     private String identifyPlatform(String url) {
         String lower = url.toLowerCase();
-        return PLATFORM_NAMES.entrySet().stream()
+        return properties.getPlatformNames().entrySet().stream()
                 .filter(e -> lower.contains(e.getKey()))
                 .map(e -> e.getValue())
                 .findFirst()

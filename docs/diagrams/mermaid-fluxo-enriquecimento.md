@@ -45,16 +45,16 @@ flowchart TD
 
     subgraph FLUXO_COMPLETO["Fluxo Completo (com domínio)"]
         direction TB
-        A1["1. DNS Validation (dnsjava)"] --> A2["2. Tech Scraper (Jsoup)"]
+        A1["1. DNS Validation (dnsjava)"] --> A2["2. Tech Scraper + Name Check (Jsoup)<br/>⚡ UMA requisição HTTP"]
         A2 --> A3["3. Social Discovery (Jsoup)"]
         A3 --> A4["4. Social Scraping (Jsoup)"]
         A4 --> A5["5. RDAP Query (HTTP)"]
-        A5 --> A6["6. OpenSERP Search (OkHttp)"]
+        A5 --> A6["6. OpenSERP Search (RestTemplate)"]
     end
 
     subgraph FLUXO_OPENSERP["Fluxo Reduzido (sem domínio)"]
         direction TB
-        B1["1. OpenSERP Search (OkHttp)"] --> B2["2. Extrair URLs dos resultados"]
+        B1["1. OpenSERP Search (RestTemplate)"] --> B2["2. Extrair URLs dos resultados"]
         B2 --> B3["3. Classificar links sociais"]
         B3 --> B4["4. Extrair e-mails expostos"]
     end
@@ -63,10 +63,11 @@ flowchart TD
     FLUXO_OPENSERP --> MERGE
 
     MERGE["Mesclar todos os dados coletados"] --> ENCRYPT["Criptografar e-mail (AES-128-GCM)"]
-    ENCRYPT --> PERSIST["Persistir Lead no PostgreSQL"]
-    PERSIST --> MASK["Mascarar e-mail (LGPD)"]
-    MASK --> FORMAT["Converter para LeadResponse"]
-    FORMAT --> SUCCESS(["FIM - 200 OK"])
+    ENCRYPT --> PERSIST["Persistir Lead no PostgreSQL<br/>FetchType: LAZY"]
+    PERSIST --> FORMAT_RESP["Converter para LeadResponse<br/>ObjectMapper injetado (Spring)"]
+    FORMAT_RESP --> MASK["Mascarar e-mail (LGPD)"]
+    MASK --> MAPPING["Agrupar em sub-records<br/>DnsRecords + DiscoveryData + RdapData"]
+    MAPPING --> SUCCESS(["FIM - 200 OK"])
     BAD_REQUEST --> FAIL(["FIM - 400"])
 ```
 
@@ -82,6 +83,9 @@ graph TB
             ES[EncryptionService]
             GEH[GlobalExceptionHandler]
             OAC[OpenApiConfig]
+            APP[AppConfig]
+            TCP[TechScraperProperties]
+            SDP[SocialDiscoveryProperties]
         end
         subgraph "controller"
             LC[LeadController]
@@ -95,6 +99,8 @@ graph TB
             SRI[SerpResultItem]
             SPD[SocialProfileData]
             SCR[ScrapedPageData]
+            DNR[DnsRecords]
+            DCD[DiscoveryData]
         end
         subgraph "model"
             L[Lead]
@@ -126,7 +132,7 @@ graph TB
     LREPO --> L
     
     classDef package fill:#e7f5ff,stroke:#1971c2,stroke-width:1px
-    class AKF,EEC,ES,GEH,OAC,LC,LRQ,LRS,DR,RD,SSR,SRI,SPD,SCR,L,LREPO,LS,DNS,TSS,SDS,RS,OSS,EU package
+    class AKF,EEC,ES,GEH,OAC,APP,TCP,SDP,LC,LRQ,LRS,DR,RD,SSR,SRI,SPD,SCR,DNR,DCD,L,LREPO,LS,DNS,TSS,SDS,RS,OSS,EU package
 ```
 
 ## Diagrama de Atividades — Enriquecimento de Lead
@@ -151,7 +157,7 @@ flowchart LR
         S2[Scraping<br/>Jsoup]
         S3[Sociais<br/>Jsoup]
         S4[RDAP<br/>HTTP]
-        S5[Google<br/>OkHttp]
+        S5[Google<br/>RestTemplate]
     end
 
     subgraph "Saída"

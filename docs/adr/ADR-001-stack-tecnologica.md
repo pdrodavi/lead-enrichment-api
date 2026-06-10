@@ -14,6 +14,7 @@ A aplicação de enriquecimento de leads precisa de um framework web moderno, se
 - Parsing de HTML para scraping
 - Documentação automática de API
 - Suporte a cache distribuído
+- Configuração externalizada via @ConfigurationProperties
 
 ## Decisão
 
@@ -28,7 +29,9 @@ Adotar a seguinte stack tecnológica:
 | **SpringDoc OpenAPI** | 2.5.0 | Documentação | Swagger UI automático com anotações @Schema, @Operation |
 | **Spring Actuator** | - | Monitoramento | Health checks, métricas, probes de Kubernetes |
 | **Spring Validation** | - | Validação | @Valid + @NotBlank/@Email nos DTOs |
-| **Jackson** | - | Serialização | Padrão Spring Boot, ObjectMapper para JSON |
+| **Jackson** | - | Serialização | Padrão Spring Boot, ObjectMapper injetado via Spring |
+| **Spring RestTemplate** | - | Cliente HTTP | Bean gerenciado pelo Spring em AppConfig (timeouts 5s/20s) |
+| **@ConfigurationProperties** | - | Config externalizada | Prefixos YAML para TechScraperProperties e SocialDiscoveryProperties |
 
 ## Consequências
 
@@ -37,6 +40,7 @@ Adotar a seguinte stack tecnológica:
   - Documentação Swagger disponível em `/swagger-ui.html` sem configuração adicional
   - Health checks prontos para orquestração (Docker Compose, Kubernetes)
   - Código reduzido com Lombok
+  - Configurações externalizadas em YAML permitem ajustes sem recompilar
 
 - Negativas:
   - Java 17 como dependência de runtime obrigatória
