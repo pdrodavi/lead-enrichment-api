@@ -60,6 +60,8 @@ Enriquece um lead com dados públicos do domínio (DNS, RDAP, tecnologias, redes
 
 #### Response (200 OK)
 
+Os campos são organizados em **sub-records** para melhor legibilidade: `dns`, `discovery` e `rdap`.
+
 ```json
 [
   {
@@ -67,52 +69,47 @@ Enriquece um lead com dados públicos do domínio (DNS, RDAP, tecnologias, redes
     "emailMasked": "con***@exemplo.com",
     "name": "João Silva",
     "domain": "exemplo.com",
-    "mxStatus": true,
-    "dnsMxRecords": ["10 mail.exemplo.com."],
-    "dnsARecords": ["192.168.1.1"],
-    "dnsAaaaRecords": ["2001:db8::1"],
-    "dnsCnameRecords": [],
-    "dnsTxtRecords": ["v=spf1 include:_spf.google.com ~all"],
     "status": "ENRICHED",
-    "technologies": ["WordPress", "jQuery", "Cloudflare"],
-    "socialLinks": [
-      "https://linkedin.com/in/joaosilva",
-      "https://github.com/joaosilva"
-    ],
-    "socialProfileSummaries": [
-      "LinkedIn: Software Engineer na Empresa X | Descrição do perfil..."
-    ],
-    "exposedEmails": ["joao@exemplo.com", "suporte@exemplo.com"],
-    "nameMentions": [
-      "João Silva - LinkedIn (https://linkedin.com/in/joaosilva)"
-    ],
-    "nameMentionUrls": ["https://linkedin.com/in/joaosilva"],
-    "dorkFindings": 5,
-    "serperRawData": {
-      "query": "João Silva",
-      "totalResults": 15,
-      "items": [
-        {
+    "dns": {
+      "mxStatus": true,
+      "mxRecords": ["10 mail.exemplo.com."],
+      "aRecords": ["192.168.1.1"],
+      "aaaaRecords": ["2001:db8::1"],
+      "cnameRecords": [],
+      "txtRecords": ["v=spf1 include:_spf.google.com ~all"]
+    },
+    "discovery": {
+      "technologies": ["WordPress", "jQuery", "Cloudflare"],
+      "socialLinks": [
+        "https://linkedin.com/in/joaosilva",
+        "https://github.com/joaosilva"
+      ],
+      "socialProfileSummaries": [
+        "LinkedIn: Software Engineer na Empresa X"
+      ],
+      "exposedEmails": ["joao@exemplo.com"],
+      "nameMentions": ["Nome completo encontrado em: https://exemplo.com"],
+      "nameMentionUrls": ["https://exemplo.com"],
+      "dorkFindings": 5,
+      "foundDocuments": ["https://exemplo.com/curriculo.pdf"],
+      "discoveredUrls": ["https://exemplo.com", "https://github.com/joaosilva"],
+      "serperRawData": {
+        "query": "João Silva",
+        "totalResults": 15,
+        "items": [{
           "title": "João Silva - LinkedIn",
           "url": "https://linkedin.com/in/joaosilva",
-          "snippet": "Software Engineer com experiência em...",
+          "snippet": "Software Engineer...",
           "domain": "linkedin.com"
-        }
-      ]
+        }]
+      }
     },
-    "foundDocuments": ["https://exemplo.com/curriculo.pdf"],
-    "discoveredUrls": [
-      "https://exemplo.com",
-      "https://linkedin.com/in/joaosilva",
-      "https://github.com/joaosilva"
-    ],
     "rdap": {
       "registrar": "HOSTINGER operations, UAB",
       "registrantName": "João Silva",
-      "registrantEmail": null,
       "registrationDate": "2020-01-15T00:00:00Z",
       "expirationDate": "2027-01-15T00:00:00Z",
-      "nameservers": ["ns1.exemplo.com", "ns2.exemplo.com"],
+      "nameservers": ["ns1.exemplo.com"],
       "status": ["client transfer prohibited"],
       "taxpayerId": null,
       "source": "identitydigital"
@@ -315,39 +312,70 @@ GET /actuator/health
 
 ## Modelo de Dados
 
-### Entidade `Lead`
+### Estrutura da Resposta (`LeadResponse`)
+
+```
+LeadResponse
+├── id: Long
+├── emailMasked: String (mascarado LGPD)
+├── name: String
+├── domain: String
+├── status: String (ACTIVE | DELETED)
+├── dns: DnsRecords          ← sub-record
+│   ├── mxStatus: boolean
+│   ├── mxRecords: List<String>
+│   ├── aRecords: List<String>
+│   ├── aaaaRecords: List<String>
+│   ├── cnameRecords: List<String>
+│   └── txtRecords: List<String>
+├── discovery: DiscoveryData  ← sub-record
+│   ├── technologies: List<String>
+│   ├── socialLinks: List<String>
+│   ├── socialProfileSummaries: List<String>
+│   ├── exposedEmails: List<String>
+│   ├── nameMentions: List<String>
+│   ├── nameMentionUrls: List<String>
+│   ├── dorkFindings: int
+│   ├── foundDocuments: List<String>
+│   ├── discoveredUrls: List<String>
+│   └── serperRawData: SerpSearchResult (ou null)
+└── rdap: RdapData            ← sub-record
+    ├── rawJson: JsonNode
+    ├── registrar: String
+    ├── registrantName: String
+    ├── registrantEmail: String
+    ├── registrationDate: String
+    ├── expirationDate: String
+    ├── nameservers: List<String>
+    ├── status: List<String>
+    ├── taxpayerId: String
+    └── source: String
+```
+
+### Entidade `Lead` (banco de dados)
 
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `id` | Long (PK) | ID gerado automaticamente |
-| `email` | String (criptografado) | Email do lead (AES-GCM) |
-| `emailHash` | String (SHA-256) | Hash para consulta (unique) |
+| `email` | String (criptografado AES-GCM) | Email do lead |
+| `emailHash` | String (SHA-256, unique) | Hash para consulta |
 | `name` | String | Nome da pessoa |
 | `domain` | String | Domínio enriquecido |
 | `mxStatus` | boolean | Se possui registro MX |
 | `status` | String | ACTIVE ou DELETED |
-| `dnsMxRecords` | List<String> | Registros MX |
-| `dnsARecords` | List<String> | Registros A (IPv4) |
-| `dnsAaaaRecords` | List<String> | Registros AAAA (IPv6) |
-| `dnsCnameRecords` | List<String> | Registros CNAME |
-| `dnsTxtRecords` | List<String> | Registros TXT |
-| `technologies` | List<String> | Tecnologias detectadas |
-| `socialLinks` | List<String> | Links de redes sociais |
-| `socialProfileSummaries` | List<String> | Resumo dos perfis sociais |
-| `exposedEmails` | List<String> | E-mails expostos encontrados |
+| `dnsMxRecords` | `@ElementCollection` | Registros MX |
+| `dnsARecords` | `@ElementCollection` | Registros A (IPv4) |
+| `dnsAaaaRecords` | `@ElementCollection` | Registros AAAA (IPv6) |
+| `dnsCnameRecords` | `@ElementCollection` | Registros CNAME |
+| `dnsTxtRecords` | `@ElementCollection` | Registros TXT |
+| `technologies` | `@ElementCollection` | Tecnologias detectadas |
+| `socialLinks` | `@ElementCollection` | Links de redes sociais |
+| `socialProfileSummaries` | `@ElementCollection` | Resumo dos perfis sociais |
+| `exposedEmails` | `@ElementCollection` | E-mails expostos |
 | `dorkFindings` | int | Total de achados |
-| `nameMentions` | List<String> | Menções ao nome |
-| `rdapRawData` | TEXT | JSON bruto do RDAP |
-| `rdapRegistrar` | String | Nome do registrador |
-| `rdapRegistrantName` | String | Titular do domínio |
-| `rdapRegistrationDate` | String | Data de registro |
-| `rdapExpirationDate` | String | Data de expiração |
-| `rdapNameservers` | List<String> | Nameservers |
-| `rdapStatus` | List<String> | Status do domínio |
-| `rdapTaxpayerId` | String | CPF/CNPJ (.com.br) |
-| `serperRawJson` | TEXT | JSON bruto do OpenSERP |
-| `foundDocuments` | List<String> | Documentos encontrados |
-| `discoveredUrls` | List<String> | Todos os URLs descobertos |
+| `nameMentions` | `@ElementCollection` | Menções ao nome |
 | `createdAt` | LocalDateTime | Data de criação |
 | `updatedAt` | LocalDateTime | Data de atualização |
 | `deletedAt` | LocalDateTime | Data de exclusão (soft delete) |
+
+> Todos os campos de lista usam `FetchType.LAZY` para performance.

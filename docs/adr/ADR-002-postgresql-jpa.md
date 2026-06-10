@@ -33,11 +33,12 @@ spring:
 
 | Padrão JPA | Uso |
 |---|---|
-| `@ElementCollection(fetch = EAGER)` | Listas de DNS, tecnologias, sociais, URLs |
+| `@ElementCollection(fetch = LAZY)` | Listas de DNS, tecnologias, sociais, URLs |
 | `@Column(columnDefinition = "TEXT")` | JSON bruto RDAP e OpenSERP |
 | `@Column(length = 64, unique = true)` | Hash SHA-256 do e-mail |
 | `@Convert(converter = EncryptedEmailConverter.class)` | E-mail criptografado |
 | `@GeneratedValue(strategy = IDENTITY)` | ID auto-incremento |
+| `@PreUpdate` / `updatedAt` | Populado automaticamente em cada atualização |
 
 ### Consultas
 
@@ -60,7 +61,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
 
 - Negativas:
   - `ddl-auto: update` não é seguro para produção sem revisão
-  - `@ElementCollection(fetch = EAGER)` pode causar N+1 queries em listas grandes
+  - `@ElementCollection(fetch = LAZY)` exige acesso dentro de transação ativa
   - Dependência de PostgreSQL impede uso de bancos embarcados (H2) em produção
 
 ## Referências

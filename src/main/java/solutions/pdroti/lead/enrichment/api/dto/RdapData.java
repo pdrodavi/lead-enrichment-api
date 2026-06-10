@@ -1,5 +1,6 @@
 package solutions.pdroti.lead.enrichment.api.dto;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
@@ -24,8 +25,8 @@ import java.util.List;
 @Schema(description = "Dados do registro RDAP do domínio")
 public record RdapData(
 
-        @Schema(description = "JSON bruto retornado pela API RDAP (como objeto)")
-        Object rawJson,
+        @Schema(description = "JSON bruto retornado pela API RDAP")
+        JsonNode rawJson,
 
         @Schema(description = "Nome do registrador (ex: HOSTINGER operations, UAB)")
         String registrar,

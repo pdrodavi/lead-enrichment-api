@@ -2,6 +2,8 @@ package solutions.pdroti.lead.enrichment.api.config;
 
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Component;
 
 /**
@@ -14,6 +16,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Converter
+@Slf4j
 public class EncryptedEmailConverter implements AttributeConverter<String, String> {
 
     /** Prefixo que identifica um valor criptografado no banco. */
@@ -39,7 +42,9 @@ public class EncryptedEmailConverter implements AttributeConverter<String, Strin
         try {
             return ENC_PREFIX + encryptionService.encrypt(plainText) + ENC_SUFFIX;
         } catch (Exception e) {
-            return plainText;
+            //return plainText;
+            log.error("FALHA CRÍTICA: e-mail não criptografado será rejeitado", e);
+            throw new RuntimeException("Falha ao criptografar e-mail", e);
         }
     }
 

@@ -104,6 +104,36 @@ docker run -d \
 
 ---
 
+## Configuração Externalizada
+
+Após as refatorações, várias configurações foram externalizadas para o `application.yml` e podem ser customizadas sem recompilar o código.
+
+### Tecnologias e Redes Sociais
+
+```yaml
+techscraper:
+  signatures:          # ~65 assinaturas de tecnologia
+    WordPress: ["wp-content", "wp-includes"]
+    React: ["react.js", "_next/static"]
+    # ...
+  script-detectors:    # ~20 detectores de scripts
+    "Facebook Pixel": ["facebook", "fbq"]
+    # ...
+  meta-generators:     # ~30 geradores de meta tags
+    wordpress: "WordPress"
+    # ...
+
+social-discovery:
+  social-domains:      # 31 domínios de redes sociais
+    - facebook.com
+    - linkedin.com
+    # ...
+  platform-names:      # 30 nomes de plataforma
+    github.com: "GitHub"
+    linkedin.com: "LinkedIn"
+    # ...
+```
+
 ## Variáveis de Ambiente
 
 | Variável | Descrição | Padrão | Obrigatória |

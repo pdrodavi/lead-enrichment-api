@@ -1,5 +1,6 @@
 package solutions.pdroti.lead.enrichment.api.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import solutions.pdroti.lead.enrichment.api.dto.LeadRequest;
 import solutions.pdroti.lead.enrichment.api.dto.LeadResponse;
 import solutions.pdroti.lead.enrichment.api.service.LeadService;
+import solutions.pdroti.lead.enrichment.api.util.EmailUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,7 @@ import java.util.Map;
 public class LeadController {
 
     private final LeadService leadService;
+    private final ObjectMapper objectMapper;
 
     /**
      * Enriquece um lead com dados do domínio (DNS, RDAP, tecnologias,
@@ -45,14 +48,14 @@ public class LeadController {
     @PostMapping("/enrich")
     public ResponseEntity<List<LeadResponse>> enrichLead(@Valid @RequestBody LeadRequest request) {
         log.info("POST /enrich email={} name={} domain={}",
-                request.getEmail(), request.getName(), request.getDomain());
+                EmailUtils.mask(request.getEmail()), request.getName(), request.getDomain());
         var enriched = leadService.enrich(request.getEmail(), request.getDomain(), request.getName());
-        var enrichedResponse = LeadResponse.fromEntity(enriched);
+        var enrichedResponse = LeadResponse.fromEntity(enriched, objectMapper);
 
         String domain = enriched.getDomain();
         if (domain != null && !domain.isBlank()) {
             var allFromDomain = leadService.findByDomain(domain).stream()
-                    .map(LeadResponse::fromEntity)
+                    .map(lead -> LeadResponse.fromEntity(lead, objectMapper))
                     .toList();
             log.info("Domínio '{}' possui {} lead(s) no total", domain, allFromDomain.size());
             // Garante que pelo menos o lead enriquecido esteja na resposta
@@ -74,7 +77,7 @@ public class LeadController {
     @GetMapping
     public ResponseEntity<List<LeadResponse>> listAll() {
         var leads = leadService.listAll().stream()
-                .map(LeadResponse::fromEntity)
+                .map(lead -> LeadResponse.fromEntity(lead, objectMapper))
                 .toList();
         return ResponseEntity.ok(leads);
     }
@@ -89,7 +92,7 @@ public class LeadController {
     public ResponseEntity<List<LeadResponse>> getLeadsByDomain(@PathVariable String domain) {
         log.info("GET /domain/{}", domain);
         var leads = leadService.findByDomain(domain).stream()
-                .map(LeadResponse::fromEntity)
+                .map(lead -> LeadResponse.fromEntity(lead, objectMapper))
                 .toList();
         if (leads.isEmpty()) {
             return ResponseEntity.noContent().build();
@@ -108,9 +111,9 @@ public class LeadController {
     public ResponseEntity<LeadResponse> updateLead(
             @PathVariable String id,
             @Valid @RequestBody LeadRequest request) {
-        log.info("PUT /{} name={} email={}", id, request.getName(), request.getEmail());
+        log.info("PUT /{} name={} email={}", id, request.getName(), EmailUtils.mask(request.getEmail()));
         var updated = leadService.update(id, request.getEmail(), request.getDomain(), request.getName());
-        return ResponseEntity.ok(LeadResponse.fromEntity(updated));
+        return ResponseEntity.ok(LeadResponse.fromEntity(updated, objectMapper));
     }
 
     /**
@@ -122,7 +125,7 @@ public class LeadController {
     @GetMapping("/{id}")
     public ResponseEntity<LeadResponse> getLeadById(@PathVariable String id) {
         return leadService.findById(id)
-                .map(lead -> ResponseEntity.ok(LeadResponse.fromEntity(lead)))
+                .map(lead -> ResponseEntity.ok(LeadResponse.fromEntity(lead, objectMapper)))
                 .orElse(ResponseEntity.notFound().build());
     }
 

@@ -27,6 +27,10 @@ public class ApiKeyFilter extends OncePerRequestFilter {
     /** Nome do header onde a API Key deve ser enviada. */
     private static final String API_KEY_HEADER = "X-API-KEY";
 
+    private static final String ERROR_RESPONSE = """
+        {"error":"Unauthorized","message":"Invalid or missing API key"}
+        """.stripTrailing();
+
     private final String expectedApiKey;
 
     public ApiKeyFilter(@Value("${api.key}") String expectedApiKey) {
@@ -61,9 +65,7 @@ public class ApiKeyFilter extends OncePerRequestFilter {
             log.warn("API Key inválida para {} {}", request.getMethod(), request.getRequestURI());
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
-            response.getWriter().write("""
-                    {"error":"Unauthorized","message":"API key inválida ou ausente"}
-                    """.stripTrailing());
+            response.getWriter().write(ERROR_RESPONSE);
             return;
         }
 

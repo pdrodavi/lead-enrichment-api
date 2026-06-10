@@ -38,6 +38,21 @@ API para enriquecimento de leads com dados públicos da internet. A partir de um
 
 > 💡 **Dica:** Os diagramas Mermaid renderizam automaticamente no GitHub e no VS Code (com extensão Mermaid).
 
+## Melhorias e Refatorações Realizadas
+
+Ao longo de 8 rodadas de revisão de código, **22 issues** foram identificadas e corrigidas:
+
+| Categoria | Total | Exemplos |
+|---|---|---|
+| 🔴 Segurança | 3 | SecureRandom non-blocking, criptografia sem fallback, mascaramento em logs |
+| 🔴 Performance | 1 | `@ElementCollection` EAGER → LAZY |
+| 🟡 JPA / Dados | 3 | `@Transactional` removido da entidade, `createdAt`/`updatedAt` corrigidos |
+| 🟡 Arquitetura | 3 | ObjectMapper injetado, `RdapData.rawJson` tipado como `JsonNode` |
+| 🔵 Externalização | 3 | TechScraper + SocialDiscovery + PlatformNames para `application.yml` |
+| 🔵 Sub-records | 2 | `DnsRecords` + `DiscoveryData` (22 campos → 8 no LeadResponse) |
+| 🔵 Infra | 3 | OkHttp → RestTemplate, dependência órfã removida, 1 HTTP em vez de 2 |
+| 📚 Documentação | 4 | 9 ADRs, diagramas Mermaid + Excalidraw, guias atualizados |
+
 ## Quick Start
 
 ```bash

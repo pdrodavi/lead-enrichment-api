@@ -215,7 +215,21 @@ sequenceDiagram
 
 ---
 
-## 7. Checklist de Conformidade LGPD
+## 7. Melhorias de Segurança Aplicadas (Pós-Refatoração)
+
+Durante o processo de revisão de código, as seguintes correções de segurança foram aplicadas:
+
+| # | Problema | Risco | Correção |
+|---|---|---|---|
+| 1 | `SecureRandom.getInstanceStrong()` | Bloqueio em Docker (falta de entropia) | Substituído por `new SecureRandom()` (non-blocking) |
+| 2 | `EncryptedEmailConverter` salvava e-mail em texto plano | Vazamento de PII se criptografia falhasse | Agora lança `RuntimeException` com log de erro |
+| 3 | E-mail logado sem máscara no Controller | Exposição de PII em logs | `EmailUtils.mask()` aplicado em todos os logs |
+| 4 | `ObjectMapper` manual ignorava configs do Spring | Comportamento inconsistente com `application.yml` | Agora injetado pelo Spring via construtor |
+| 5 | Dependência OkHttp com cliente HTTP não gerenciado | Possíveis conexões sem pool/timeout centralizado | Substituído por `RestTemplate` com bean gerenciado |
+
+---
+
+## 8. Checklist de Conformidade LGPD
 
 | Requisito LGPD | Implementação | Status |
 |---|---|---|

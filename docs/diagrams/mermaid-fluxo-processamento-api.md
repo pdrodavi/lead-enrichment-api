@@ -55,14 +55,14 @@ flowchart TD
 
         subgraph FULL_FLOW["Fluxo Completo"]
             D_CALL["DnsValidationService lookupDomain"]
-            T_CALL["TechScraperService scrapeAndDetect"]
+            T_CALL["TechScraperService<br/>scrapeTechnologiesAndCheckName<br/>⚡ 1 chamada HTTP"]
             S_CALL["SocialDiscoveryService discoverSocialLinks"]
             R_CALL["RdapService lookup"]
-            O_CALL["OpenSerpSearch searchPerson"]
+            O_CALL["OpenSerpSearch searchPerson<br/>(RestTemplate)"]
         end
 
         subgraph OPENSERP_ONLY["Fluxo Reduzido"]
-            O_CALL2["OpenSerpSearch searchPerson"]
+            O_CALL2["OpenSerpSearch searchPerson<br/>(RestTemplate)"]
         end
 
         FULL_FLOW --> SAVE
@@ -109,6 +109,8 @@ flowchart TD
     style FULL_FLOW fill:#ebfbee,stroke:#2f9e44,stroke-width:2px
     style OPENSERP_ONLY fill:#fff5f5,stroke:#e03131,stroke-width:2px
 ```
+
+> **Nota:** O fluxo completo de tecnologias + verificação de nome agora é feito em **uma única requisição HTTP** via `scrapeTechnologiesAndCheckName()`. O `OpenSerpSearch` usa `RestTemplate` (gerenciado pelo Spring) em vez de `OkHttpClient` manual.
 
 ## Diagrama de Contexto da API
 

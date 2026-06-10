@@ -55,38 +55,38 @@ public class Lead implements Serializable {
 
     // === DNS — todos os registros consultados ===
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     private List<String> dnsMxRecords;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     private List<String> dnsARecords;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     private List<String> dnsAaaaRecords;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     private List<String> dnsCnameRecords;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     private List<String> dnsTxtRecords;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     private List<String> technologies;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     private List<String> socialLinks;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     private List<String> socialProfileSummaries;
 
     // === Google Dorks — dados de info exposta ===
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     private List<String> exposedEmails;
 
     private int dorkFindings;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @Column(length = 2048)
     private List<String> nameMentions;
 
@@ -107,10 +107,10 @@ public class Lead implements Serializable {
     private LocalDateTime rdapRegistrationDate;
     private LocalDateTime rdapExpirationDate;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     private List<String> rdapNameservers;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     private List<String> rdapStatus;
 
     @Column(length = 20)
@@ -124,11 +124,11 @@ public class Lead implements Serializable {
     @Column(columnDefinition = "TEXT")
     private String serperRawData;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @Column(length = 2048)
     private List<String> foundDocuments;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @Column(length = 2048)
     private List<String> discoveredUrls;
 
@@ -139,6 +139,7 @@ public class Lead implements Serializable {
     private LocalDateTime dataRetentionUntil;
     private LocalDateTime createdAt;
     private LocalDateTime deletedAt;
+    private LocalDateTime updatedAt;
 
     /** Retorna true se o lead já foi persistido (id != null). */
     public boolean isPresent() {
@@ -266,5 +267,8 @@ public class Lead implements Serializable {
 
     public LocalDateTime getDeletedAt() { return deletedAt; }
     public void setDeletedAt(LocalDateTime deletedAt) { this.deletedAt = deletedAt; }
+
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 
 }

@@ -63,7 +63,9 @@ public class EncryptionService {
     public String encrypt(String plainText) {
         try {
             byte[] iv = new byte[IV_LENGTH];
-            SecureRandom.getInstanceStrong().nextBytes(iv);
+            //SecureRandom.getInstanceStrong().nextBytes(iv);
+            SecureRandom random = new SecureRandom();  // Non-blocking
+            random.nextBytes(iv);
 
             Cipher cipher = Cipher.getInstance(ALGORITHM);
             cipher.init(Cipher.ENCRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
