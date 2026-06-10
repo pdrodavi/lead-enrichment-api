@@ -7,17 +7,24 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
-/** Filtro que valida API Key em todas as requisições (exceto actuator e Swagger). */
+/**
+ * Filtro HTTP que valida a API Key (X-API-KEY) em todas as requisições.
+ * <p>
+ * Endpoints públicos (actuator, Swagger/OpenAPI) são ignorados.
+ * Retorna HTTP 401 com JSON de erro se a chave estiver ausente ou incorreta.
+ */
 @Slf4j
 @Component
 @Order(1)
 public class ApiKeyFilter extends OncePerRequestFilter {
 
+    /** Nome do header onde a API Key deve ser enviada. */
     private static final String API_KEY_HEADER = "X-API-KEY";
 
     private final String expectedApiKey;
@@ -26,8 +33,12 @@ public class ApiKeyFilter extends OncePerRequestFilter {
         this.expectedApiKey = expectedApiKey;
     }
 
+    /**
+     * Define quais endpoints NÃO exigem API Key.
+     * Inclui actuator (health/checks) e Swagger UI.
+     */
     @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) {
+    protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
         String path = request.getRequestURI();
         return path.startsWith("/actuator")
                 || path.startsWith("/swagger-ui")
@@ -35,9 +46,15 @@ public class ApiKeyFilter extends OncePerRequestFilter {
                 || path.startsWith("/swagger-resources");
     }
 
+    /**
+     * Valida a API Key do header X-API-KEY contra a chave configurada.
+     * Retorna 401 com resposta JSON em caso de falha.
+     */
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(@NonNull HttpServletRequest request,
+                                     @NonNull HttpServletResponse response,
+                                     @NonNull FilterChain filterChain)
+            throws ServletException, IOException {
         String apiKey = request.getHeader(API_KEY_HEADER);
 
         if (apiKey == null || !apiKey.equals(expectedApiKey)) {
