@@ -365,8 +365,6 @@ public class LeadService {
         Set<String> socialLinksFound = new LinkedHashSet<>();
         List<String> emails = new ArrayList<>();
         List<String> nameMentions = new ArrayList<>();
-        String lowerName = name.toLowerCase();
-        String[] nameParts = lowerName.split("\\s+");
 
         // Reuso do pattern de domínios sociais do SocialDiscoveryService
         var socialDomains = SocialDiscoveryService.getSocialDomains();
@@ -379,6 +377,12 @@ public class LeadService {
 
             if (link == null) continue;
 
+            // Só processa resultados que contêm o nome completo (100% match)
+            // Evita trazer dados de outra pessoa com nome parcial igual
+            if (!nameMatchesExactly(snippet, name) && !nameMatchesExactly(title, name)) {
+                continue;
+            }
+
             allLinks.add(link);
             String lowerLink = link.toLowerCase();
 
@@ -387,8 +391,8 @@ public class LeadService {
                 socialLinksFound.add(link);
             }
 
-            // Menções ao nome (completo ou parcial)
-            addNameMentions(nameMentions, link, snippet, title, lowerName, nameParts);
+            // Menção ao nome completo encontrado
+            nameMentions.add("Nome completo encontrado em: " + link);
 
             // Extração de e-mails do snippet/título
             extractEmails(emails, snippet, title);
@@ -425,26 +429,42 @@ public class LeadService {
     }
 
     /**
-     * Analisa snippet e título de um resultado de busca, verificando se
-     * contém menções ao nome completo ou partes do nome da pessoa.
+     * Verifica se o nome completo aparece no texto como uma palavra/frase
+     * distinta, evitando matches parciais dentro de outras palavras.
+     * <p>
+     * Exemplos:
+     * <ul>
+     *   <li>"João Silva" → match em "sobre João Silva" ✓</li>
+     *   <li>"João Silva" → NÃO match em "João Silveira" ✗</li>
+     *   <li>"João Silva" → NÃO match em "João Silvares" ✗</li>
+     * </ul>
+     *
+     * @param text texto onde buscar (snippet, título, HTML)
+     * @param name nome completo a ser encontrado
+     * @return true se o nome completo foi encontrado como termo distinto
      */
-    private void addNameMentions(List<String> nameMentions, String link,
-                                  String snippet, String title,
-                                  String lowerName, String[] nameParts) {
-        String lowerSnippet = snippet.toLowerCase();
-        String lowerTitle = title.toLowerCase();
+    private boolean nameMatchesExactly(String text, String name) {
+        if (text == null || name == null) return false;
+        String lowerText = text.toLowerCase();
+        String lowerName = name.toLowerCase();
 
-        if (lowerSnippet.contains(lowerName) || lowerTitle.contains(lowerName)) {
-            nameMentions.add("Nome completo encontrado em: " + link);
-        } else {
-            for (String part : nameParts) {
-                if (part.length() > 2
-                        && (lowerSnippet.contains(part) || lowerTitle.contains(part))) {
-                    nameMentions.add("Parte do nome '" + part + "' encontrada em: " + link);
-                    break;
-                }
-            }
+        int idx = lowerText.indexOf(lowerName);
+        if (idx < 0) return false;
+
+        // Verifica se não há caractere alfanumérico antes do nome
+        if (idx > 0) {
+            char before = lowerText.charAt(idx - 1);
+            if (Character.isLetterOrDigit(before)) return false;
         }
+
+        // Verifica se não há caractere alfanumérico depois do nome
+        int endIdx = idx + lowerName.length();
+        if (endIdx < lowerText.length()) {
+            char after = lowerText.charAt(endIdx);
+            if (Character.isLetterOrDigit(after)) return false;
+        }
+
+        return true;
     }
 
     /**
