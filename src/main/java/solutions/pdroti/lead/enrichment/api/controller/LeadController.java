@@ -47,6 +47,7 @@ public class LeadController {
         log.info("POST /enrich email={} name={} domain={}",
                 request.getEmail(), request.getName(), request.getDomain());
         var enriched = leadService.enrich(request.getEmail(), request.getDomain(), request.getName());
+        var enrichedResponse = LeadResponse.fromEntity(enriched);
 
         String domain = enriched.getDomain();
         if (domain != null && !domain.isBlank()) {
@@ -54,10 +55,15 @@ public class LeadController {
                     .map(LeadResponse::fromEntity)
                     .toList();
             log.info("Domínio '{}' possui {} lead(s) no total", domain, allFromDomain.size());
+            // Garante que pelo menos o lead enriquecido esteja na resposta
+            if (allFromDomain.isEmpty()) {
+                log.warn("Lead recém-enriquecido não encontrado em findByDomain — retornando apenas ele");
+                return ResponseEntity.ok(List.of(enrichedResponse));
+            }
             return ResponseEntity.ok(allFromDomain);
         }
 
-        return ResponseEntity.ok(List.of(LeadResponse.fromEntity(enriched)));
+        return ResponseEntity.ok(List.of(enrichedResponse));
     }
 
     /**
