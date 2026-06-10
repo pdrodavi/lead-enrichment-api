@@ -1,10 +1,14 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import solutions.pdroti.lead.enrichment.api.dto.RdapData;
+import solutions.pdroti.lead.enrichment.api.dto.SerpResultItem;
+import solutions.pdroti.lead.enrichment.api.dto.SerpSearchResult;
 import solutions.pdroti.lead.enrichment.api.model.Lead;
 import solutions.pdroti.lead.enrichment.api.repository.LeadRepository;
 import solutions.pdroti.lead.enrichment.api.util.EmailUtils;
@@ -43,6 +47,9 @@ public class LeadService {
 
     /** Número máximo de resultados retornados pelo OpenSERP. */
     private static final int OPENSERP_MAX_RESULTS = 30;
+
+    /** ObjectMapper para serializar/deserializar os resultados estruturados do OpenSERP. */
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     /**
      * Enriquece um lead com dados públicos.
@@ -354,6 +361,7 @@ public class LeadService {
             lead.setSocialLinks(new ArrayList<>());
             lead.setExposedEmails(new ArrayList<>());
             lead.setNameMentions(new ArrayList<>());
+            lead.setSerperRawData(serializeSerpResult(SerpSearchResult.empty(name)));
             return;
         }
 
@@ -362,6 +370,7 @@ public class LeadService {
         Set<String> socialLinksFound = new LinkedHashSet<>();
         List<String> emails = new ArrayList<>();
         List<String> nameMentions = new ArrayList<>();
+        List<SerpResultItem> matchedItems = new ArrayList<>();
 
         // Reuso do pattern de domínios sociais do SocialDiscoveryService
         var socialDomains = SocialDiscoveryService.getSocialDomains();
@@ -379,6 +388,9 @@ public class LeadService {
             if (!nameMatchesExactly(snippet, name) && !nameMatchesExactly(title, name)) {
                 continue;
             }
+
+            // Adiciona o resultado como item estruturado
+            matchedItems.add(SerpResultItem.fromSearchResult(matchedItems.size() + 1, link, title, snippet));
 
             allLinks.add(link);
             String lowerLink = link.toLowerCase();
@@ -402,26 +414,41 @@ public class LeadService {
         lead.setDorkFindings(emails.size());
         lead.setNameMentions(nameMentions);
 
-        log.info("OpenSERP: {} links totais, {} sociais, {} e-mails, {} menções",
-                allLinks.size(), socialLinksFound.size(), emails.size(), nameMentions.size());
+        // Armazena resultado estruturado em vez de JSON bruto
+        lead.setSerperRawData(serializeSerpResult(
+                new SerpSearchResult(name, matchedItems.size(), matchedItems)));
+
+        log.info("OpenSERP: {} links totais, {} sociais, {} e-mails, {} menções, {} resultados estruturados",
+                allLinks.size(), socialLinksFound.size(), emails.size(), nameMentions.size(), matchedItems.size());
     }
 
 
 
     /**
      * Faz a chamada ao OpenSERP e retorna os resultados como JsonArray.
-     * Em caso de falha, retorna um array vazio e registra o erro.
+     * O armazenamento estruturado é feito em {@link #enrichWithOpenSerp(Lead, String)}.
      */
     private JsonArray fetchOpenSerpResults(Lead lead, String name) {
         try {
             JsonArray results = openSerpSearch.searchPerson(name, OPENSERP_MAX_RESULTS);
-            lead.setSerperRawData(results.toString());
-            log.info("OpenSERP: {} resultados para '{}'", results.size(), name);
+            log.info("OpenSERP: {} resultados brutos para '{}'", results.size(), name);
             return results;
         } catch (Exception e) {
             log.warn("OpenSERP falhou para '{}': {}", name, e.getMessage());
-            lead.setSerperRawData(null);
             return new JsonArray();
+        }
+    }
+
+    /**
+     * Serializa o resultado estruturado do OpenSERP para JSON.
+     * Se falhar, retorna o JSON de um resultado vazio.
+     */
+    private String serializeSerpResult(SerpSearchResult result) {
+        try {
+            return JSON_MAPPER.writeValueAsString(result);
+        } catch (JsonProcessingException e) {
+            log.warn("Falha ao serializar resultado estruturado do OpenSERP: {}", e.getMessage());
+            return "{\"query\":\"\",\"totalResults\":0,\"items\":[]}";
         }
     }
 
