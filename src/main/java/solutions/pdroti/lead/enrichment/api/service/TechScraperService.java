@@ -3,17 +3,15 @@ package solutions.pdroti.lead.enrichment.api.service;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Service;
-import solutions.pdroti.lead.enrichment.api.dto.DorkScanResult;
 import solutions.pdroti.lead.enrichment.api.dto.ScrapedPageData;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -158,52 +156,6 @@ public class TechScraperService {
             Map.entry("statamic", "Statamic"),
             Map.entry("craft", "Craft CMS"),
             Map.entry("grav", "Grav")
-    );
-
-    // ========== Google Dorks — padrões de busca de info exposta ==========
-
-    private static final Pattern EMAIL_PATTERN =
-            Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}");
-
-    private static final Pattern PHONE_PATTERN =
-            Pattern.compile("(?:\\+\\d{1,3}[\\s.-]?)?(?:\\(\\d{2,3}\\)[\\s.-]?)?\\d{4,5}[\\s.-]?\\d{4}");
-
-    private static final List<String> ADMIN_PATTERNS = List.of(
-            "/admin", "/wp-admin", "/administrator", "/backend", "/cpanel",
-            "/painel", "/login", "/signin", "/dashboard", "/manager",
-            "/joomla/administrator", "/drupal/admin", "/moderator"
-    );
-
-    private static final List<String> DOCUMENT_EXTENSIONS = List.of(
-            ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-            ".csv", ".txt", ".json", ".xml"
-    );
-
-    private static final List<String> CONFIG_EXTENSIONS = List.of(
-            ".env", ".env.bak", ".env.backup", ".config", ".conf",
-            ".sql", ".dump", ".bak", ".old", ".swp", ".yml.bak"
-    );
-
-    private static final List<String> BACKUP_EXTENSIONS = List.of(
-            ".zip", ".tar", ".tar.gz", ".tgz", ".rar", ".7z", ".gz",
-            "-backup", "-bkp", ".sql.gz", ".dump.sql"
-    );
-
-    private static final List<String> LOG_PATTERNS = List.of(
-            "error_log", "debug.log", "access.log", "error.log", "wp-debug.log",
-            "laravel.log", "syslog", "messages.log"
-    );
-
-    private static final List<String> ERROR_KEYWORDS = List.of(
-            "warning:", "fatal error:", "stack trace:", "exception:",
-            "syntax error", "parse error", "uncaught", "notice:",
-            "mysql_error", "sql error", "cannot modify header"
-    );
-
-    private static final List<String> DB_KEYWORDS = List.of(
-            "mysql", "mariadb", "postgresql", "database_host",
-            "db_host", "db_name", "db_user", "db_password",
-            "pdo_mysql", "mysqli_connect", "pg_connect"
     );
 
     enum ScrapeError {
@@ -472,10 +424,11 @@ public class TechScraperService {
     }
 
     /** Extrai os headings h1 da página. */
+    @SuppressWarnings("null")
     private static List<String> extractH1Headings(Document doc) {
         return doc.select("h1").stream()
-                .map(Element::text)
-                .map(String::strip)
+                .map(e -> e.text())
+                .map(s -> s.strip())
                 .filter(t -> !t.isBlank())
                 .toList();
     }
@@ -489,146 +442,58 @@ public class TechScraperService {
                 .toList();
     }
 
-    // ========== Google Dorks — varredura de informações expostas ==========
+
 
     /**
-     * Executa varredura Google Dorks no HTML e retorna informações expostas.
+     * Verifica se o nome de uma pessoa é mencionado no HTML da página do domínio.
+     * <p>
+     * Busca o nome completo e cada parte significativa do nome (≥ 3 caracteres)
+     * no texto visível da página. Útil para validar se um lead realmente
+     * está associado ao domínio informado.
+     *
+     * @param domain domínio para buscar (ex: "pdroti.com")
+     * @param name   nome completo da pessoa (ex: "João Silva")
+     * @return lista de menções encontradas, ou lista vazia se não encontrado
      */
-    public DorkScanResult scanDorks(String domain, String name) {
-        if (domain == null || domain.isBlank()) {
-            return DorkScanResult.empty();
+    public List<String> findNameInPage(String domain, String name) {
+        if (domain == null || domain.isBlank() || name == null || name.isBlank()) {
+            return List.of();
         }
 
         try {
             Document doc = fetchDocument(normalizeUrl(domain));
-            String html = doc.html();
-            String lowerHtml = html.toLowerCase();
+            String pageText = doc.text().toLowerCase();
+            String lowerName = name.toLowerCase();
+            String[] nameParts = lowerName.split("\\s+");
+            List<String> mentions = new ArrayList<>();
 
-            List<String> emails = scanEmails(html);
-            List<String> phones = scanPhones(html);
-            List<String> adminPaths = scanAdminPaths(lowerHtml);
-            List<String> documents = scanDocumentLinks(lowerHtml);
-            List<String> configFiles = scanConfigFiles(lowerHtml);
-            List<String> backups = scanBackupFiles(lowerHtml);
-            List<String> errors = scanErrorMessages(lowerHtml);
-            List<String> logs = scanLogFiles(lowerHtml);
-            List<String> dbInfo = scanDatabaseInfo(lowerHtml);
-            List<String> nameMentions = scanNameMentions(lowerHtml, name);
+            // URL completa com protocolo para extração em nameMentionUrls
+            String pageUrl = "https://" + domain;
 
-            int total = emails.size() + phones.size() + adminPaths.size()
-                    + documents.size() + configFiles.size() + backups.size()
-                    + errors.size() + logs.size() + dbInfo.size() + nameMentions.size();
-
-            log.info("Dorks scan para {}: {} achados ({} emails, {} phones, {} admin, {} docs, {} name)",
-                    domain, total, emails.size(), phones.size(), adminPaths.size(), documents.size(), nameMentions.size());
-
-            return new DorkScanResult(
-                    emails, phones, adminPaths, documents, configFiles, backups,
-                    errors, logs, dbInfo, Map.of(), List.of(), nameMentions, total
-            );
-
-        } catch (Exception e) {
-            log.warn("Dorks scan falhou para {}: {}", domain, e.getMessage());
-            return DorkScanResult.empty();
-        }
-    }
-
-    /**
-     * Escaneia menções ao nome da pessoa no HTML da página.
-     * Divide o nome em partes (ex: "João Silva" → ["joão", "silva"])
-     * e verifica se cada parte aparece no texto.
-     */
-    private static List<String> scanNameMentions(String lowerHtml, String name) {
-        if (name == null || name.isBlank()) return List.of();
-
-        List<String> mentions = new java.util.ArrayList<>();
-
-        // Verifica o nome completo
-        String fullName = name.toLowerCase().strip();
-        if (lowerHtml.contains(fullName)) {
-            mentions.add("Nome completo encontrado: " + name);
-        }
-
-        // Verifica partes do nome individualmente
-        String[] parts = fullName.split("\\s+");
-        for (String part : parts) {
-            if (part.length() > 2 && lowerHtml.contains(part)) {
-                mentions.add("Parte do nome encontrada: " + part);
+            // Verifica nome completo no texto da página
+            if (pageText.contains(lowerName)) {
+                mentions.add("Nome completo encontrado em: " + pageUrl);
+            } else {
+                // Verifica partes significativas do nome
+                for (String part : nameParts) {
+                    if (part.length() > 2 && pageText.contains(part)) {
+                        mentions.add("Parte do nome '" + part + "' encontrada em: " + pageUrl);
+                        break;
+                    }
+                }
             }
+
+            // Verifica também no título da página
+            String title = doc.title().toLowerCase();
+            if (title.contains(lowerName)) {
+                mentions.add("Nome completo encontrado no título da página: " + pageUrl);
+            }
+
+            return mentions;
+        } catch (Exception e) {
+            log.debug("Falha ao buscar nome na página {}: {}", domain, e.getMessage());
+            return List.of();
         }
-
-        return List.copyOf(mentions);
-    }
-
-    /** Escaneia e-mails expostos no HTML. */
-    private static List<String> scanEmails(String html) {
-        return EMAIL_PATTERN.matcher(html).results()
-                .map(r -> r.group().toLowerCase().strip())
-                .filter(e -> !e.contains("example.com") && !e.contains("@domain") && !e.contains("@site"))
-                .distinct()
-                .toList();
-    }
-
-    /** Escaneia telefones expostos no HTML. */
-    private static List<String> scanPhones(String html) {
-        return PHONE_PATTERN.matcher(html).results()
-                .map(r -> r.group().strip())
-                .filter(p -> p.length() >= 8)
-                .distinct()
-                .toList();
-    }
-
-    /** Escaneia caminhos administrativos expostos. */
-    private static List<String> scanAdminPaths(String html) {
-        return ADMIN_PATTERNS.stream()
-                .filter(html::contains)
-                .toList();
-    }
-
-    /** Escaneia links para documentos (.pdf, .docx, etc.). */
-    private static List<String> scanDocumentLinks(String html) {
-        return DOCUMENT_EXTENSIONS.stream()
-                .flatMap(ext -> {
-                    var pattern = Pattern.compile("\"[^\"]*" + Pattern.quote(ext) + "\"", Pattern.CASE_INSENSITIVE);
-                    return pattern.matcher(html).results().map(r -> r.group().replace("\"", ""));
-                })
-                .distinct()
-                .toList();
-    }
-
-    /** Escaneia arquivos de configuração expostos (.env, .sql, etc.). */
-    private static List<String> scanConfigFiles(String html) {
-        return CONFIG_EXTENSIONS.stream()
-                .filter(html::contains)
-                .toList();
-    }
-
-    /** Escaneia arquivos de backup expostos (.zip, .tar.gz, -backup, etc.). */
-    private static List<String> scanBackupFiles(String html) {
-        return BACKUP_EXTENSIONS.stream()
-                .filter(html::contains)
-                .toList();
-    }
-
-    /** Escaneia mensagens de erro expostas (stack traces, warnings). */
-    private static List<String> scanErrorMessages(String html) {
-        return ERROR_KEYWORDS.stream()
-                .filter(html::contains)
-                .toList();
-    }
-
-    /** Escaneia arquivos de log expostos. */
-    private static List<String> scanLogFiles(String html) {
-        return LOG_PATTERNS.stream()
-                .filter(html::contains)
-                .toList();
-    }
-
-    /** Escaneia informações de banco de dados expostas. */
-    private static List<String> scanDatabaseInfo(String html) {
-        return DB_KEYWORDS.stream()
-                .filter(html::contains)
-                .toList();
     }
 
     /** Classifica a exceção em um ScrapeError legível e adiciona à lista. */

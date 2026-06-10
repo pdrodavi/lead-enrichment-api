@@ -1,6 +1,15 @@
+server:
+  port: 8081
+  tomcat:
+    connection-timeout: 300000
+    keep-alive-timeout: 300000
+
 spring:
   application:
     name: lead-enrichment-api
+  mvc:
+    async:
+      request-timeout: 300000
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5433/postgres}
     username: ${DB_USERNAME:postgres}
@@ -10,12 +19,13 @@ spring:
     format-sql: false
     hibernate:
       ddl-auto: update
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
   jackson:
     serialization:
       write-dates-as-timestamps: false
+
+serper:
+  api:
+    url: ${SERPER_API_URL:http://localhost:7000}
 
 api:
   key: ${API_KEY:b6vxAgj5KG5HPGCKlQQ7}
@@ -40,6 +50,3 @@ logging:
     org.springframework.web: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-
-server:
-  port: 8081  

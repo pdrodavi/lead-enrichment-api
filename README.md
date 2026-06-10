@@ -3,14 +3,16 @@
 API para enriquecimento de leads com dados públicos.  
 A partir de um **nome** (obrigatório), e opcionalmente um e-mail e domínio, a API descobre:
 
-- Tecnologias usadas no site do domínio (CMS, frameworks, analytics, CDN)
-- Perfis em redes sociais (GitHub, LinkedIn, Instagram, etc.)
-- Dados extraídos dos perfis sociais (título, descrição)
-- Informações de segurança expostas via Google Dorks (e-mails, telefones, documentos, configs)
-- Validação de registro MX (DNS)
-- Busca pelo nome no DuckDuckGo quando nenhum domínio é informado
+- **Consultas DNS completas** — MX, A (IPv4), AAAA (IPv6), CNAME e TXT
+- **Registro RDAP do domínio** — registrar, titular, datas, nameservers, CPF/CNPJ (.com.br)
+- **Tecnologias** do site (CMS, frameworks, analytics, CDN, e-commerce) — ~90 assinaturas
+- **Redes sociais** — LinkedIn, GitHub, Instagram, YouTube, TikTok, etc. (31 plataformas)
+- **Dados de perfil** das redes sociais (título e descrição via scraping)
+- **E-mails expostos** encontrados em resultados de busca
+- **Menções ao nome** da pessoa em páginas e resultados de busca
+- **Busca por nome via OpenSERP** (Google Search self-hosted) quando não há domínio
 
-Tudo com conformidade LGPD (e-mails criptografados e mascarados, soft-delete).
+Tudo com conformidade LGPD (e-mails criptografados em repouso com AES-GCM, mascarados em logs/respostas, soft-delete com retenção de 365 dias).
 
 ---
 
@@ -21,12 +23,15 @@ Tudo com conformidade LGPD (e-mails criptografados e mascarados, soft-delete).
 | **Java 17** | Runtime |
 | **Spring Boot 3.3.x** | Framework web / JPA / Actuator |
 | **PostgreSQL 16** | Banco de dados relacional |
-| **Hibernate 6.x** | ORM |
-| **Jsoup** | Scraping HTML (sites e DuckDuckGo) |
-| **dnsjava** | Consultas DNS (registro MX) |
-| **SpringDoc OpenAPI** | Swagger UI em `/swagger-ui.html` |
-| **Spring Actuator** | Health check em `/actuator/health` |
-| **Lombok** | Redução de boilerplate |
+| **Hibernate 6.x** | ORM com `ddl-auto: update` |
+| **dnsjava 3.6.x** | Consultas DNS (MX, A, AAAA, CNAME, TXT) |
+| **Jsoup 1.17.x** | Scraping HTML (site do domínio e redes sociais) |
+| **OkHttp 4.12.x** | Cliente HTTP para OpenSERP |
+| **Gson 2.11.x** | Parse de JSON do OpenSERP |
+| **SpringDoc OpenAPI 2.5.x** | Swagger UI em `/swagger-ui.html` |
+| **Spring Actuator** | Health check, métricas e probes |
+| **Lombok** | Redução de boilerplate (`@Slf4j`, `@Builder`, `@RequiredArgsConstructor`) |
+| **OpenSERP** | Self-hosted Google Search API |
 
 ---
 
@@ -35,6 +40,7 @@ Tudo com conformidade LGPD (e-mails criptografados e mascarados, soft-delete).
 - JDK 17+
 - Docker + Docker Compose
 - Maven 3.8+
+- OpenSERP self-hosted (opcional — necessário apenas para buscas sem domínio)
 
 ---
 
@@ -46,7 +52,8 @@ Tudo com conformidade LGPD (e-mails criptografados e mascarados, soft-delete).
 | `DB_USERNAME` | Usuário do DB | `postgres` |
 | `DB_PASSWORD` | Senha do DB | `pgsqldev` |
 | `API_KEY` | Chave de API (header `X-API-KEY`) | `b6vxAgj5KG5HPGCKlQQ7` |
-| `ENCRYPTION_SECRET` | Chave AES para criptografia de e-mails | `f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=` |
+| `ENCRYPTION_SECRET` | Chave AES-128 para criptografia de e-mails (mín. 16 bytes) | `f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=` |
+| `SERPER_API_URL` | URL base da API OpenSERP | `http://localhost:7000` |
 | `PORT` | Porta do servidor | `8081` |
 | `PG_USER` | Usuário PostgreSQL (Docker) | `postgres` |
 | `PG_PASSWORD` | Senha PostgreSQL (Docker) | `pgsqldev` |
@@ -95,9 +102,14 @@ API_KEY=... ENCRYPTION_SECRET=... mvn spring-boot:run -Dmaven.test.skip=true
 
 Todas as requisições exigem o header:
 
-```
+```http
 X-API-KEY: b6vxAgj5KG5HPGCKlQQ7
 ```
+
+Endpoints públicos (não exigem chave):
+- `/actuator/health` — Health check
+- `/swagger-ui/**` — Swagger UI
+- `/v3/api-docs/**` — OpenAPI spec
 
 ---
 
@@ -120,17 +132,17 @@ Enriquece um lead com dados públicos. Apenas o **nome** é obrigatório.
 | Campo | Obrigatório | Descrição |
 |---|---|---|
 | `name` | Sim | Nome completo da pessoa |
-| `email` | Não | E-mail do lead (usado para dedup e identificação) |
-| `domain` | Não | Domínio para scraping (DNS, tecnologias, redes sociais, Dorks) |
+| `email` | Não | E-mail do lead (dedup + extração automática de domínio) |
+| `domain` | Não | Domínio para enriquecimento (DNS, RDAP, scraping) |
 
 **Comportamento por cenário:**
 
-| Cenário | O que acontece |
+| Cenário | Fluxo |
 |---|---|
-| Só `name` | Busca o nome no DuckDuckGo — encontra e-mails, redes sociais e perfis |
-| `name` + `domain` | Scraping no domínio: tecnologias, redes sociais, Dorks. Só persiste se o **nome completo** for encontrado no HTML do site |
-| `name` + `email` | Usa o e-mail para buscar lead existente e reenriquecer |
-| Tudo preenchido | Fluxo completo: dedup por e-mail + scraping no domínio |
+| Apenas `name` | Busca via **OpenSERP** (Google) → extrai links, e-mails, menções |
+| `name` + `domain` | **DNS** (5 tipos) + **RDAP** + **Tecnologias** + **Redes sociais** + **Verificação de nome no HTML** |
+| `name` + `email` (sem domain) | Domínio extraído do e-mail automaticamente → fluxo completo |
+| Todos preenchidos | Dedup por e-mail + reenriquecimento completo |
 
 **Resposta (200 OK):**
 
@@ -141,30 +153,54 @@ Enriquece um lead com dados públicos. Apenas o **nome** é obrigatório.
   "name": "João Silva",
   "domain": "exemplo.com",
   "mxStatus": true,
+  "dnsMxRecords": ["10 mail.exemplo.com."],
+  "dnsARecords": ["192.168.1.1"],
+  "dnsAaaaRecords": [],
+  "dnsCnameRecords": [],
+  "dnsTxtRecords": ["v=spf1 include:_spf.google.com ~all"],
   "status": "ACTIVE",
-  "technologies": ["WordPress", "jQuery", "Google Analytics"],
-  "socialLinks": ["https://github.com/joaosilva", "https://linkedin.com/in/joaosilva"],
+  "technologies": ["WordPress", "jQuery", "Google Analytics", "Cloudflare"],
+  "socialLinks": [
+    "https://github.com/joaosilva",
+    "https://linkedin.com/in/joaosilva"
+  ],
   "socialProfileSummaries": [
     "GitHub: joaosilva (João Silva) — Desenvolvedor full-stack",
     "LinkedIn: João Silva — Software Engineer na Empresa X"
   ],
   "exposedEmails": ["contato@exemplo.com"],
-  "exposedPhones": [],
-  "exposedAdminPaths": ["/wp-admin"],
-  "exposedDocuments": [],
-  "exposedConfigFiles": [],
-  "nameMentions": ["Nome completo encontrado: João Silva"],
-  "dorkFindings": 8
+  "nameMentions": [
+    "Nome completo encontrado em: https://exemplo.com/sobre"
+  ],
+  "nameMentionUrls": ["https://exemplo.com/sobre"],
+  "dorkFindings": 2,
+  "serperRawData": null,
+  "rdap": {
+    "rawJson": { ... },
+    "registrar": "HOSTINGER operations, UAB",
+    "registrantName": "João Silva",
+    "registrantEmail": null,
+    "registrationDate": "2023-05-10T14:22:00Z",
+    "expirationDate": "2027-05-10T14:22:00Z",
+    "nameservers": ["ns1.hostinger.com", "ns2.hostinger.com"],
+    "status": ["client transfer prohibited"],
+    "taxpayerId": null,
+    "source": "identitydigital"
+  }
 }
 ```
 
-**Erro (400 Bad Request)** — nome não encontrado no domínio:
+---
 
-```json
-{
-  "error": "Bad Request",
-  "message": "Nome \"João Silva\" não encontrado no domínio exemplo.com"
-}
+### `PUT /api/v1/leads/{id}` — Atualizar e reenriquecer
+
+Atualiza os dados do lead e executa reenriquecimento completo.
+
+```bash
+curl -X PUT http://localhost:8081/api/v1/leads/1 \
+  -H "X-API-KEY: b6vxAgj5KG5HPGCKlQQ7" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"João Silva","email":"joao@novoemail.com","domain":"novodominio.com"}'
 ```
 
 ---
@@ -189,9 +225,27 @@ curl http://localhost:8081/api/v1/leads/1 -H "X-API-KEY: b6vxAgj5KG5HPGCKlQQ7"
 
 ---
 
+### `GET /api/v1/leads/domain/{domain}` — Buscar leads por domínio
+
+Retorna todos os leads ativos de um domínio específico.
+
+```bash
+curl http://localhost:8081/api/v1/leads/domain/exemplo.com \
+  -H "X-API-KEY: b6vxAgj5KG5HPGCKlQQ7"
+```
+
+**Resposta (204 No Content)** — se nenhum lead for encontrado para o domínio.
+
+---
+
 ### `DELETE /api/v1/leads/{id}` — Soft delete (LGPD)
 
-Marca o lead como `DELETED` (direito ao esquecimento). O registro permanece no banco para auditoria, mas não aparece nas consultas.
+Marca o lead como `DELETED` (direito ao esquecimento). O registro permanece no banco para auditoria, mas não aparece nas consultas padrão.
+
+```bash
+curl -X DELETE http://localhost:8081/api/v1/leads/1 \
+  -H "X-API-KEY: b6vxAgj5KG5HPGCKlQQ7"
+```
 
 **Resposta (200 OK):**
 
@@ -208,34 +262,64 @@ Marca o lead como `DELETED` (direito ao esquecimento). O registro permanece no b
 
 ### Com domínio informado
 
-1. **Validação DNS** — verifica se o domínio tem registro MX
-2. **Scraping de tecnologias** — detecta CMS, frameworks, analytics, CDN, e-commerce, etc. (~60 assinaturas)
-3. **Descoberta de redes sociais** — encontra links para GitHub, LinkedIn, Instagram, YouTube, etc.
-4. **Scraping de perfis sociais** — acessa cada perfil encontrado e extrai título e descrição
-5. **Google Dorks** — varre o HTML do site em busca de:
-   - E-mails e telefones expostos
-   - Caminhos administrativos (`/admin`, `/wp-admin`)
-   - Documentos públicos (`.pdf`, `.docx`, `.xlsx`)
-   - Arquivos de configuração (`.env`, `.sql`, `.bak`)
-   - Menções ao nome completo da pessoa
+| Etapa | Serviço | Dados obtidos |
+|---|---|---|
+| **1. DNS** | `DnsValidationService` | MX (servidores de e-mail), A (IPv4), AAAA (IPv6), CNAME (alias), TXT (SPF/DKIM) |
+| **2. RDAP** | `RdapService` | Registrar, titular, e-mail do titular, datas de registro/expiração, nameservers, status, CPF/CNPJ (.com.br) |
+| **3. Tecnologias** | `TechScraperService` | CMS, frameworks JS, CSS, analytics, CDN, e-commerce, pagamento, fontes (~90 assinaturas) |
+| **4. Redes sociais** | `SocialDiscoveryService` | Links para 31 plataformas (LinkedIn, GitHub, Instagram, YouTube, TikTok, etc.) |
+| **5. Perfis sociais** | `SocialDiscoveryService` | Título e descrição de cada perfil social encontrado |
+| **6. Verificação de nome** | `TechScraperService.findNameInPage()` | Confirma se o nome da pessoa aparece no HTML do site |
 
 ### Sem domínio informado
 
-Busca o nome no **DuckDuckGo** e extrai:
-- E-mails encontrados nos snippets de resultado
-- Links de redes sociais
-- Dados dos perfis sociais (via scraping)
-- Menções ao nome completo
+| Etapa | Serviço | Dados obtidos |
+|---|---|---|
+| **1. Busca no Google** | `OpenSerpSearch` (self-hosted) | Até 30 resultados com título, URL e snippet |
+| **2. Extração de links** | `LeadService` | Todos os URLs dos resultados |
+| **3. Classificação social** | Reuso de `SocialDiscoveryService.getSocialDomains()` | Identifica links de redes sociais |
+| **4. Extração de e-mails** | Regex `EMAIL_PATTERN` | E-mails expostos nos snippets |
+| **5. Menções ao nome** | Correspondência textual | "Nome completo encontrado em: ..." ou "Parte do nome ... encontrada em: ..." |
+
+---
+
+## Estrutura Completa da Resposta
+
+```
+LeadResponse {
+  id                  Long           — ID único
+  emailMasked         String         — E-mail mascarado (LGPD)
+  name                String         — Nome da pessoa
+  domain              String         — Domínio validado
+  mxStatus            boolean        — Se possui registro MX
+  dnsMxRecords        List<String>   — Servidores de e-mail
+  dnsARecords         List<String>   — Endereços IPv4
+  dnsAaaaRecords      List<String>   — Endereços IPv6
+  dnsCnameRecords     List<String>   — Alias de domínio
+  dnsTxtRecords       List<String>   — SPF, DKIM, DMARC
+  status              String         — ACTIVE | DELETED
+  technologies        List<String>   — Tecnologias detectadas
+  socialLinks         List<String>   — URLs de redes sociais
+  socialProfileSummaries List<String> — Resumo dos perfis sociais
+  exposedEmails       List<String>   — E-mails expostos
+  nameMentions        List<String>   — Menções ao nome
+  nameMentionUrls     List<String>   — URLs das menções
+  dorkFindings        int            — Total de achados
+  serperRawData       Object         — JSON bruto do OpenSERP (ou null)
+  rdap                RdapData       — Dados de registro do domínio (ou null)
+}
+```
 
 ---
 
 ## LGPD & Segurança
 
-- **E-mails criptografados** no banco (AES) via `EncryptedEmailConverter`
-- **E-mails mascarados** na resposta da API (`joa***@exemplo.com`)
-- **Soft delete** — registros marcados como `DELETED` não são removidos fisicamente
-- **Consentimento** — campo `consentGiven` e `consentDate` em cada lead
-- **Retenção de dados** — campo `dataRetentionUntil` (365 dias)
+- **E-mails criptografados em repouso** — AES-128-GCM com IV aleatório via `EncryptionService` + `EncryptedEmailConverter`
+- **E-mails mascarados** em logs e respostas da API (`joa***@exemplo.com`)
+- **Soft delete** — registros marcados como `DELETED`, não removidos fisicamente
+- **Consentimento** — campos `consentGiven` e `consentDate` em cada lead
+- **Retenção de dados** — campo `dataRetentionUntil` (365 dias a partir da criação)
+- **Proteção de PII** — nenhum dado sensível aparece em logs ou respostas sem máscara
 
 ---
 
@@ -248,6 +332,41 @@ http://localhost:8081/swagger-ui.html
 ```
 
 ---
+
+## Arquitetura do Código
+
+```
+src/main/java/solutions/pdroti/lead/enrichment/api/
+├── LeadEnrichmentApplication.java   ← Entry point
+├── config/
+│   ├── ApiKeyFilter.java            ← Autenticação via header X-API-KEY
+│   ├── EncryptedEmailConverter.java ← Criptografia JPA de e-mails
+│   ├── EncryptionService.java       ← AES-128-GCM
+│   ├── GlobalExceptionHandler.java  ← Tratamento global de erros
+│   └── OpenApiConfig.java           ← Configuração Swagger/OpenAPI
+├── controller/
+│   └── LeadController.java          ← REST endpoints
+├── dto/
+│   ├── DnsResult.java               ← Resultado da consulta DNS
+│   ├── LeadRequest.java             ← Payload de requisição
+│   ├── LeadResponse.java            ← Payload de resposta
+│   ├── RdapData.java                ← Dados de registro RDAP
+│   ├── ScrapedPageData.java         ← Dados de scraping de página
+│   └── SocialProfileData.java       ← Dados de perfil social
+├── model/
+│   └── Lead.java                    ← Entidade JPA
+├── repository/
+│   └── LeadRepository.java          ← Acesso a dados
+├── service/
+│   ├── DnsValidationService.java    ← Consultas DNS (MX, A, AAAA, CNAME, TXT)
+│   ├── LeadService.java             ← Orquestração do enrichment
+│   ├── OpenSerpSearch.java          ← Cliente HTTP OpenSERP (Google Search)
+│   ├── RdapService.java             ← Consulta RDAP (Identity Digital + Registro.br)
+│   ├── SocialDiscoveryService.java  ← Descoberta e scraping de redes sociais
+│   └── TechScraperService.java      ← Scraping de tecnologias e metadados
+└── util/
+    └── EmailUtils.java              ← Máscara de e-mail (LGPD)
+```
 
 ## Health Check
 

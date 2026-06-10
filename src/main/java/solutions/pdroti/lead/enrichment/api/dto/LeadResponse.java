@@ -1,10 +1,13 @@
 package solutions.pdroti.lead.enrichment.api.dto;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.media.Schema;
 import solutions.pdroti.lead.enrichment.api.model.Lead;
 import solutions.pdroti.lead.enrichment.api.util.EmailUtils;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Schema(description = "Resposta com dados enriquecidos do lead (email mascarado por LGPD)")
 public record LeadResponse(
@@ -20,8 +23,25 @@ public record LeadResponse(
         @Schema(description = "Domínio validado", example = "exemplo.com")
         String domain,
 
-        @Schema(description = "Status do registro MX", example = "true")
+        @Schema(description = "Se o domínio possui registro MX")
         boolean mxStatus,
+
+        // === DNS — registros completos ===
+
+        @Schema(description = "Registros MX (servidores de e-mail)")
+        List<String> dnsMxRecords,
+
+        @Schema(description = "Registros A (IPv4)")
+        List<String> dnsARecords,
+
+        @Schema(description = "Registros AAAA (IPv6)")
+        List<String> dnsAaaaRecords,
+
+        @Schema(description = "Registros CNAME (alias)")
+        List<String> dnsCnameRecords,
+
+        @Schema(description = "Registros TXT (SPF, DKIM, DMARC)")
+        List<String> dnsTxtRecords,
 
         @Schema(description = "Status do processamento", example = "ENRICHED")
         String status,
@@ -35,49 +55,102 @@ public record LeadResponse(
         @Schema(description = "Resumo dos dados scrapy dos perfis de redes sociais")
         List<String> socialProfileSummaries,
 
-        // === Dados do Google Dorks (persistidos) ===
-
-        @Schema(description = "E-mails expostos encontrados (Google Dorks)")
+        @Schema(description = "E-mails expostos encontrados")
         List<String> exposedEmails,
-
-        @Schema(description = "Telefones expostos encontrados")
-        List<String> exposedPhones,
-
-        @Schema(description = "Caminhos administrativos expostos")
-        List<String> exposedAdminPaths,
-
-        @Schema(description = "Documentos expostos (.pdf, .docx, etc.)")
-        List<String> exposedDocuments,
-
-        @Schema(description = "Arquivos de configuração expostos (.env, .sql, .bak)")
-        List<String> exposedConfigFiles,
 
         @Schema(description = "Menções ao nome da pessoa encontradas na página")
         List<String> nameMentions,
 
-        @Schema(description = "Total de achados no Dorks scan")
-        int dorkFindings
+        @Schema(description = "URLs onde o nome da pessoa foi encontrado (extraídas das menções)")
+        List<String> nameMentionUrls,
+
+        @Schema(description = "Total de achados (emails + menções)")
+        int dorkFindings,
+
+        // === Dados OpenSERP (resultado bruto da busca) ===
+
+        @Schema(description = "Resultado bruto da busca no OpenSERP (como objeto)")
+        Object serperRawData,
+
+        // === Dados RDAP (registro de domínio) ===
+
+        @Schema(description = "Dados RDAP do domínio")
+        RdapData rdap
 ) {
 
-    /** Cria resposta a partir do lead salvo (dorks já inclusos na entidade). */
+    private static final Pattern URL_IN_MENTION = Pattern.compile("https?://[^\\s,;)]+");
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+
+    /** Cria resposta a partir do lead salvo. */
     public static LeadResponse fromEntity(Lead lead) {
+        List<String> mentions = lead.getNameMentions();
         return new LeadResponse(
                 lead.getId(),
                 maskEmail(lead.getEmail()),
                 lead.getName(),
                 lead.getDomain(),
                 lead.getMxStatus(),
+                lead.getDnsMxRecords(),
+                lead.getDnsARecords(),
+                lead.getDnsAaaaRecords(),
+                lead.getDnsCnameRecords(),
+                lead.getDnsTxtRecords(),
                 lead.getStatus(),
                 lead.getTechnologies(),
                 lead.getSocialLinks(),
                 lead.getSocialProfileSummaries(),
                 lead.getExposedEmails(),
-                lead.getExposedPhones(),
-                lead.getExposedAdminPaths(),
-                lead.getExposedDocuments(),
-                lead.getExposedConfigFiles(),
-                lead.getNameMentions(),
-                lead.getDorkFindings()
+                mentions,
+                extractUrlsFromMentions(mentions),
+                lead.getDorkFindings(),
+                buildSerperResult(lead),
+                buildRdap(lead)
+        );
+    }
+
+    /** Extrai as URLs do campo nameMentions. */
+    private static List<String> extractUrlsFromMentions(List<String> mentions) {
+        if (mentions == null || mentions.isEmpty()) return List.of();
+        List<String> urls = new ArrayList<>();
+        for (String mention : mentions) {
+            var matcher = URL_IN_MENTION.matcher(mention);
+            while (matcher.find()) {
+                urls.add(matcher.group());
+            }
+        }
+        return urls;
+    }
+
+    /** Converte o JSON bruto do OpenSERP em objeto para o response. */
+    private static Object buildSerperResult(Lead lead) {
+        if (lead.getSerperRawData() == null) return null;
+        try {
+            return JSON_MAPPER.readTree(lead.getSerperRawData());
+        } catch (Exception e) {
+            return lead.getSerperRawData();
+        }
+    }
+
+    /** Constrói RdapData a partir dos campos RDAP do lead. */
+    private static RdapData buildRdap(Lead lead) {
+        if (lead.getRdapRawData() == null) return null;
+        Object parsedJson;
+        try {
+            parsedJson = JSON_MAPPER.readTree(lead.getRdapRawData());
+        } catch (Exception e) {
+            parsedJson = lead.getRdapRawData();
+        }
+        return new RdapData(
+                parsedJson,
+                lead.getRdapRegistrar(),
+                lead.getRdapRegistrantName(),
+                lead.getRdapRegistrantEmail(),
+                lead.getRdapRegistrationDate() != null ? lead.getRdapRegistrationDate().toString() : null,
+                lead.getRdapExpirationDate() != null ? lead.getRdapExpirationDate().toString() : null,
+                lead.getRdapNameservers(),
+                lead.getRdapStatus(),
+                lead.getRdapTaxpayerId(),
+                lead.getRdapSource()
         );
     }
 

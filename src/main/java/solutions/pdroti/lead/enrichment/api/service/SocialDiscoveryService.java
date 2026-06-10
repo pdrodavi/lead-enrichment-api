@@ -150,6 +150,16 @@ public class SocialDiscoveryService {
 
     // ========== Scraping de perfis de redes sociais ==========
 
+    /**
+     * Retorna a lista de domínios de redes sociais conhecidos.
+     * Usado pelo {@link LeadService} para classificar links encontrados via OpenSERP.
+     *
+     * @return lista imutável de domínios sociais
+     */
+    public static List<String> getSocialDomains() {
+        return SOCIAL_DOMAINS;
+    }
+
     /** Mapa de identificadores de domínio → nome da plataforma. */
     private static final Map<String, String> PLATFORM_NAMES = new LinkedHashMap<>();
     static {
@@ -219,7 +229,7 @@ public class SocialDiscoveryService {
         String lower = url.toLowerCase();
         return PLATFORM_NAMES.entrySet().stream()
                 .filter(e -> lower.contains(e.getKey()))
-                .map(Map.Entry::getValue)
+                .map(e -> e.getValue())
                 .findFirst()
                 .orElse("Rede Social");
     }
@@ -236,7 +246,7 @@ public class SocialDiscoveryService {
     /** Extrai o título da página. */
     private String extractPageTitle(Document doc) {
         return Optional.ofNullable(doc.title())
-                .map(String::strip)
+                .map(s -> s.strip())
                 .filter(s -> !s.isBlank())
                 .orElse(null);
     }

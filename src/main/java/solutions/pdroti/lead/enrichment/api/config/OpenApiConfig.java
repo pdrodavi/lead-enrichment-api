@@ -8,7 +8,12 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** Configuração do OpenAPI (Swagger) com esquema de segurança X-API-KEY. */
+/**
+ * Configuração do OpenAPI/Swagger para documentação da API.
+ * <p>
+ * Define metadados da API (nome, versão, descrição) e o esquema
+ * de segurança {@code X-API-KEY} para autenticação via header.
+ */
 @Configuration
 public class OpenApiConfig {
 

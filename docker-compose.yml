@@ -22,6 +22,17 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ===================== OpenSERP (Google Search API self-hosted) =====================
+  openserp:
+    image: karust/openserp:latest
+    container_name: openserp-${ENV:-dev}
+    restart: unless-stopped
+    ports:
+      - "7000:7000"
+    command: serve -a 0.0.0.0 -p 7000
+    networks:
+      - lead-net
+
   # ===================== Lead Enrichment API =====================
   app:
     build:
@@ -32,6 +43,7 @@ services:
         DB_PASSWORD: ${DB_PASSWORD:-${PG_PASSWORD:-pgsqldev}}
         API_KEY: ${API_KEY:-b6vxAgj5KG5HPGCKlQQ7}
         ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=}
+        SERPER_API_URL: ${SERPER_API_URL:-http://openserp-${ENV:-dev}:7000/search}
         PORT: ${PORT:-8781}
     container_name: lead-enrichment-api-${ENV:-dev}
     ports:
@@ -42,10 +54,13 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-${PG_PASSWORD:-pgsqldev}}
       API_KEY: ${API_KEY:-b6vxAgj5KG5HPGCKlQQ7}
       ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=}
+      SERPER_API_URL: ${SERPER_API_URL:-http://openserp-${ENV:-dev}:7000/search}
       PORT: ${PORT:-8081}
     depends_on:
       postgres:
         condition: service_healthy
+      openserp:
+        condition: service_started
     restart: unless-stopped
     networks:
       - lead-net
