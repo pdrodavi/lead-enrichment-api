@@ -35,8 +35,11 @@ public class OpenSerpSearch {
     /** Limite padrão de resultados por busca. */
     private static final int DEFAULT_LIMIT = 30;
 
-    /** Timeout para conexão, leitura e escrita (20 segundos). */
-    private static final int TIMEOUT_SECONDS = 20;
+    /** Timeout curto para conexão (falha rápido se OpenSERP estiver offline). */
+    private static final int CONNECT_TIMEOUT_SECONDS = 5;
+
+    /** Timeout para leitura da resposta (20s para consultas lentas). */
+    private static final int READ_TIMEOUT_SECONDS = 20;
 
     private final OkHttpClient client;
     private final Gson gson;
@@ -51,9 +54,9 @@ public class OpenSerpSearch {
     public OpenSerpSearch(@Value("${serper.api.url:http://localhost:7000}") String baseUrl) {
         this.baseUrl = baseUrl.replace("/search", "").replaceAll("/$", "");
         this.client = new OkHttpClient.Builder()
-                .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .writeTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .build();
         this.gson = new Gson();
     }
