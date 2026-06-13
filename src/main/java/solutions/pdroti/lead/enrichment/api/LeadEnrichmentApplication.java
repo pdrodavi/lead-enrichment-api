@@ -2,6 +2,9 @@ package solutions.pdroti.lead.enrichment.api;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.data.web.config.EnableSpringDataWebSupport;
+import static org.springframework.data.web.config.EnableSpringDataWebSupport.PageSerializationMode.VIA_DTO;
 
 /**
  * Classe principal da aplicação Lead Enrichment API.
@@ -10,6 +13,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * a partir de domínios (DNS, RDAP, scraping web, redes sociais).
  */
 @SpringBootApplication
+@ConfigurationPropertiesScan
+@EnableSpringDataWebSupport(pageSerializationMode = VIA_DTO)
 public class LeadEnrichmentApplication {
 
     public static void main(String[] args) {

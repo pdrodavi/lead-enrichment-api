@@ -1,6 +1,6 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
-import lombok.RequiredArgsConstructor;
+import com.github.benmanes.caffeine.cache.Cache;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import solutions.pdroti.lead.enrichment.api.dto.RdapData;
@@ -19,16 +19,30 @@ import java.util.function.Supplier;
  * DNS, RDAP, scraping de tecnologias e descoberta de redes sociais.
  * <p>
  * Extraído do {@code LeadService} para manter a responsabilidade única (SRP).
+ * <p>
+ * Otimizações: resultados de tecnologias são cacheados via Caffeine (1h).
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class DomainEnricher {
 
     private final DnsValidationService dnsValidationService;
     private final TechScraperService techScraperService;
     private final SocialDiscoveryService socialDiscoveryService;
     private final RdapService rdapService;
+    private final Cache<String, List<String>> techCache;
+
+    public DomainEnricher(DnsValidationService dnsValidationService,
+                           TechScraperService techScraperService,
+                           SocialDiscoveryService socialDiscoveryService,
+                           RdapService rdapService,
+                           Cache<String, List<String>> techCache) {
+        this.dnsValidationService = dnsValidationService;
+        this.techScraperService = techScraperService;
+        this.socialDiscoveryService = socialDiscoveryService;
+        this.rdapService = rdapService;
+        this.techCache = techCache;
+    }
 
     /**
      * Reseta todos os campos de enriquecimento para valores padrão.
@@ -89,8 +103,21 @@ public class DomainEnricher {
         enrichRdap(lead, domain);
 
         // 3. Scraping de tecnologias + verificação de nome (UMA requisição HTTP)
+        // Resultado é cacheado via Caffeine (1h)
         executeSafely(
-                () -> techScraperService.scrapeTechnologiesAndCheckName(domain, name),
+                () -> {
+                    String cacheKey = domain.toLowerCase().strip();
+                    var cached = techCache.getIfPresent(cacheKey);
+                    if (cached != null) {
+                        log.debug("Tech cache hit para {}", domain);
+                        return new TechScraperService.ScrapeResult(cached, List.of());
+                    }
+                    var result = techScraperService.scrapeTechnologiesAndCheckName(domain, name);
+                    if (result != null) {
+                        techCache.put(cacheKey, result.technologies());
+                    }
+                    return result;
+                },
                 result -> {
                     if (result != null) {
                         lead.setTechnologies(new ArrayList<>(result.technologies()));
@@ -145,7 +172,7 @@ public class DomainEnricher {
         lead.setRdapTaxpayerId(rdap.taxpayerId());
         lead.setRdapSource(rdap.source());
 
-        log.info("RDAP para {}: registrar={}, registrant={}",
+        log.debug("RDAP para {}: registrar={}, registrant={}",
                 domain, rdap.registrar(), rdap.registrantName());
     }
 

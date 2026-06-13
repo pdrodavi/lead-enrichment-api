@@ -8,13 +8,21 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.Strictness;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import solutions.pdroti.lead.enrichment.api.config.OpenSerpProxyProperties;
+import solutions.pdroti.lead.enrichment.api.config.OpenSerpProxyProperties.EndpointConfig;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -30,6 +38,15 @@ import java.nio.charset.StandardCharsets;
  * <pre>
  * GET /google/search?text={query}&limit={n}
  * </pre>
+ * <p>
+ * Resiliência:
+ * <ul>
+ *   <li>CAPTCHA detection — erros 429 com {@code captcha_detected} são identificados</li>
+ *   <li>Circuit breaker — após N captchas consecutivos, pausa por um período</li>
+ *   <li>Rate limiting — delay mínimo de 2s entre requisições</li>
+ *   <li>Proxy rotation — round-robin entre múltiplos endpoints OpenSERP</li>
+ *   <li>Failover — se um endpoint falha, tenta o próximo automaticamente</li>
+ * </ul>
  *
  * @see OpenSerpEnricher
  * @see <a href="https://github.com/serpapi/open-serp">OpenSERP</a>
@@ -41,40 +58,113 @@ public class OpenSerpSearch {
     /** Limite padrão de resultados por busca. */
     private static final int DEFAULT_LIMIT = 30;
 
+    /** Delay mínimo entre requisições ao OpenSERP (rate limiting). */
+    private static final long MIN_DELAY_MS = 2_000;
+
+    /** Máximo de retentativas com backoff exponencial. */
+    private static final int MAX_RETRIES = 2;
+
+    /** Backoff inicial para retry (1s * 2^attempt). */
+    private static final long BASE_BACKOFF_MS = 1_000;
+
+    /** Número máximo de CAPTCHAs consecutivos antes do circuit breaker abrir. */
+    private static final int CIRCUIT_BREAKER_THRESHOLD = 3;
+
+    /** Tempo de pausa do circuit breaker ao abrir. */
+    private static final Duration CIRCUIT_BREAKER_COOLDOWN = Duration.ofMinutes(5);
+
     private final RestTemplate restTemplate;
     private final Gson gson;
-    private final String baseUrl;
+
+    /** Lista de endpoints configurados (com proxy opcional). */
+    private final List<EndpointEntry> endpoints = new CopyOnWriteArrayList<>();
+
+    /** Índice round-robin para rotação de endpoints. */
+    private final AtomicInteger endpointIndex = new AtomicInteger(0);
+
+    // === Circuit breaker state ===
+    private final AtomicInteger consecutiveCaptchas = new AtomicInteger(0);
+    private final AtomicReference<Instant> circuitBreakerOpenedAt = new AtomicReference<>(null);
+    private volatile Instant lastRequestTime = Instant.EPOCH;
+
+    /** Endpoint único com URL normalizada e proxy opcional. */
+    private record EndpointEntry(String baseUrl, String proxy) {
+        String normalize() {
+            return baseUrl.replace("/search", "").replaceAll("/$", "");
+        }
+    }
 
     /**
-     * Construtor que inicializa o RestTemplate (gerenciado pelo Spring) e a URL base.
-     * A URL é normalizada removendo sufixos como "/search" ou "/".
-     *
-     * @param baseUrl      URL base da API OpenSERP (padrão: http://localhost:7000)
-     * @param restTemplate RestTemplate configurado com timeouts (injetado pelo Spring)
+     * Construtor que inicializa o RestTemplate e a lista de endpoints.
+     * Se {@code endpoints} estiver vazia, usa o {@code api.url} como fallback.
      */
     public OpenSerpSearch(
-            @Value("${open-serp.api.url:http://localhost:7000}") String baseUrl,
+            OpenSerpProxyProperties proxyProperties,
             @Qualifier("openSerpRestTemplate") RestTemplate restTemplate) {
-        this.baseUrl = baseUrl.replace("/search", "").replaceAll("/$", "");
         this.restTemplate = restTemplate;
         this.gson = new GsonBuilder().setStrictness(Strictness.LENIENT).create();
+
+        // Carrega endpoints da configuração
+        List<EndpointConfig> configured = proxyProperties.getEndpoints();
+        if (configured != null && !configured.isEmpty()) {
+            for (EndpointConfig ep : configured) {
+                if (ep.getUrl() != null && !ep.getUrl().isBlank()) {
+                    endpoints.add(new EndpointEntry(ep.getUrl(), ep.getProxy()));
+                    log.debug("OpenSERP endpoint configurado: {} {}", ep.getUrl(),
+                            ep.getProxy() != null ? "(com proxy: " + ep.getProxy().replaceAll(":.*@", ":***@") + ")" : "(sem proxy)");
+                }
+            }
+        }
+
+        // Fallback: usa api.url se nenhum endpoint foi configurado
+        if (endpoints.isEmpty()) {
+            String fallbackUrl = proxyProperties.getApiUrl();
+            if (fallbackUrl == null || fallbackUrl.isBlank()) {
+                fallbackUrl = "http://localhost:7000";
+            }
+            endpoints.add(new EndpointEntry(fallbackUrl, null));
+            log.warn("OpenSERP endpoint fallback: {} (sem proxy)", fallbackUrl);
+        }
+    }
+
+    /**
+     * Retorna o próximo endpoint no esquema round-robin.
+     */
+    private EndpointEntry nextEndpoint() {
+        int index = endpointIndex.getAndUpdate(i -> (i + 1) % endpoints.size());
+        return endpoints.get(index);
     }
 
     /**
      * Busca resultados no Google através do OpenSERP.
      * <p>
-     * A query é URL-encoded automaticamente. Em caso de erro HTTP
-     * ou resposta inválida, retorna um JsonArray vazio (não lança exceção).
+     * A query é URL-encoded automaticamente. Com resiliência:
+     * <ul>
+     *   <li>Rate limiting — delay mínimo entre requisições</li>
+     *   <li>Circuit breaker — para se detectar muitos CAPTCHAs consecutivos</li>
+     *   <li>Retry com backoff exponencial — em caso de CAPTCHA</li>
+     *   <li>Round-robin entre endpoints configurados</li>
+     * </ul>
      *
      * @param name  termo de busca (nome da pessoa, empresa, etc.)
      * @param limit máximo de resultados a retornar
      * @return JsonArray com a lista de resultados (título, url, snippet, domínio)
      */
     public JsonArray searchPerson(String name, int limit) {
-        String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8);
-        String url = baseUrl + "/google/search?text=" + encodedName + "&limit=" + limit;
+        if (isCircuitBreakerOpen()) {
+            log.debug("OpenSERP circuit breaker aberto — pulando busca para '{}'", name);
+            return new JsonArray();
+        }
 
-        JsonArray results = fetchAndParseResults(url, name);
+        enforceRateLimit();
+
+        String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8);
+        EndpointEntry ep = nextEndpoint();
+
+        log.debug("OpenSERP usando endpoint: {} (proxy: {})", ep.normalize(),
+                ep.proxy() != null ? "configurado" : "direto");
+
+        JsonArray results = fetchWithRetry(ep, encodedName, name, 0, limit);
         if (results != null && !results.isEmpty()) {
             log.debug("OpenSERP: {} resultados para '{}' (limit={})", results.size(), name, limit);
         } else {
@@ -84,37 +174,156 @@ public class OpenSerpSearch {
     }
 
     /**
+     * Constrói a URL de busca incluindo proxy como query parameter se configurado.
+     * Algumas forks do OpenSERP suportam {@code &proxy=...} para rotear via proxy.
+     */
+    private String buildSearchUrl(EndpointEntry ep, String encodedQuery, int limit) {
+        String base = ep.normalize();
+        String url = base + "/google/search?text=" + encodedQuery + "&limit=" + limit;
+        if (ep.proxy() != null && !ep.proxy().isBlank()) {
+            url += "&proxy=" + URLEncoder.encode(ep.proxy(), StandardCharsets.UTF_8);
+        }
+        return url;
+    }
+
+    /**
      * Busca com o limite padrão de 30 resultados.
-     *
-     * @param name termo de busca
-     * @return JsonArray com resultados
-     * @see #searchPerson(String, int)
      */
     public JsonArray searchPerson(String name) {
         return searchPerson(name, DEFAULT_LIMIT);
     }
 
     /**
-     * Executa a requisição HTTP e faz o parse seguro da resposta.
-     * <p>
-     * A API OpenSERP pode retornar JSON ou um formato texto/table.
-     * Este método tenta JSON primeiro; se falhar, faz o parse do formato texto.
-     *
-     * @param url   URL completa para a requisição
-     * @param label identificador para logs (geralmente o nome buscado)
-     * @return JsonArray de resultados, ou null se não foi possível extrair nada
+     * Faz a requisição com retry exponencial em caso de CAPTCHA.
+     * Em caso de falha, tenta o próximo endpoint automaticamente (failover).
      */
-    private JsonArray fetchAndParseResults(String url, String label) {
-        String raw;
+    private JsonArray fetchWithRetry(EndpointEntry ep, String encodedQuery,
+                                      String label, int attempt, int limit) {
+        String url = buildSearchUrl(ep, encodedQuery, limit);
         try {
-            raw = restTemplate.getForObject(url, String.class);
+            String raw = restTemplate.getForObject(url, String.class);
+            consecutiveCaptchas.set(0);
+            return parseResponse(raw, label);
+        } catch (HttpClientErrorException e) {
+            if (isCaptchaError(e)) {
+                return handleCaptcha(encodedQuery, label, attempt, limit);
+            }
+            log.debug("OpenSERP erro HTTP para '{}': {} {} — {}",
+                    label, e.getStatusCode(), e.getStatusText(), e.getResponseBodyAsString());
+            return tryNextEndpoint(encodedQuery, label, attempt, limit);
         } catch (Exception e) {
-            log.warn("OpenSERP falhou (requisição) para '{}': {}", label, e.getMessage());
+            log.debug("OpenSERP falhou (requisição) para '{}': {}", label, e.getMessage());
+            return tryNextEndpoint(encodedQuery, label, attempt, limit);
+        }
+    }
+
+    /**
+     * Tenta o próximo endpoint da lista (failover) se houver mais de um.
+     */
+    private JsonArray tryNextEndpoint(String encodedQuery, String label,
+                                       int attempt, int limit) {
+        if (endpoints.size() > 1 && attempt < endpoints.size()) {
+            EndpointEntry next = nextEndpoint();
+            log.debug("OpenSERP failover — tentando próximo endpoint: {}", next.normalize());
+            return fetchWithRetry(next, encodedQuery, label + " (failover)", attempt + 1, limit);
+        }
+        return null;
+    }
+
+    /**
+     * Verifica se a exceção corresponde a um erro de CAPTCHA do OpenSERP.
+     */
+    private boolean isCaptchaError(HttpClientErrorException e) {
+        if (e.getStatusCode().value() != 429) return false;
+        try {
+            String body = e.getResponseBodyAsString();
+            if (body == null || body.isBlank()) return false;
+            JsonElement root = gson.fromJson(body, JsonElement.class);
+            if (root == null || !root.isJsonObject()) return false;
+            JsonElement errorEl = root.getAsJsonObject().get("error");
+            return errorEl != null && "captcha_detected".equals(errorEl.getAsString());
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    /**
+     * Lida com CAPTCHA: incrementa contador, abre circuit breaker se exceder
+     * threshold, faz retry com backoff exponencial e tenta próximo endpoint.
+     */
+    private JsonArray handleCaptcha(String encodedQuery, String label,
+                                     int attempt, int limit) {
+        int count = consecutiveCaptchas.incrementAndGet();
+        log.warn("OpenSERP CAPTCHA #{} para '{}'", count, label);
+
+        if (count >= CIRCUIT_BREAKER_THRESHOLD) {
+            circuitBreakerOpenedAt.set(Instant.now());
+            log.error("OpenSERP circuit breaker ABERTO — Google está bloqueando com CAPTCHA. " +
+                    "Pausando por {} minutos. Configure proxies ou endpoints adicionais " +
+                    "em open-serp.endpoints no application.yml.",
+                    CIRCUIT_BREAKER_COOLDOWN.toMinutes());
             return null;
         }
 
+        // Tenta próximo endpoint primeiro (failover)
+        if (endpoints.size() > 1) {
+            EndpointEntry next = nextEndpoint();
+            log.debug("OpenSERP CAPTCHA — alternando para próximo endpoint: {}", next.normalize());
+            return fetchWithRetry(next, encodedQuery, label + " (failover)", attempt, limit);
+        }
+
+        // Sem failover disponível, faz retry com backoff
+        if (attempt < MAX_RETRIES) {
+            long backoff = BASE_BACKOFF_MS * (1L << attempt);
+            log.debug("OpenSERP retry {} para '{}' após {}ms", attempt + 1, label, backoff);
+            try {
+                Thread.sleep(backoff);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+            // Pega o próximo endpoint para o retry (round-robin)
+            EndpointEntry retryEp = nextEndpoint();
+            return fetchWithRetry(retryEp, encodedQuery, label, attempt + 1, limit);
+        }
+
+        return null;
+    }
+
+    /**
+     * Verifica se o circuit breaker está aberto (cooldown ainda não expirou).
+     */
+    private boolean isCircuitBreakerOpen() {
+        Instant opened = circuitBreakerOpenedAt.get();
+        if (opened == null) return false;
+        if (Instant.now().isAfter(opened.plus(CIRCUIT_BREAKER_COOLDOWN))) {
+            circuitBreakerOpenedAt.set(null);
+            consecutiveCaptchas.set(0);
+            log.debug("OpenSERP circuit breaker fechado — retomando operação após cooldown");
+            return false;
+        }
+        return true;
+    }
+
+    /** Garante delay mínimo entre requisições para evitar rate limiting. */
+    private void enforceRateLimit() {
+        long elapsed = Duration.between(lastRequestTime, Instant.now()).toMillis();
+        if (elapsed < MIN_DELAY_MS) {
+            try {
+                Thread.sleep(MIN_DELAY_MS - elapsed);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        lastRequestTime = Instant.now();
+    }
+
+    /**
+     * Executa a requisição HTTP e faz o parse seguro da resposta.
+     */
+    private JsonArray parseResponse(String raw, String label) {
         if (raw == null || raw.isBlank()) {
-            log.warn("OpenSERP retornou resposta vazia para '{}'", label);
+            log.debug("OpenSERP retornou resposta vazia para '{}'", label);
             return null;
         }
 
@@ -129,12 +338,12 @@ public class OpenSerpSearch {
         // 2. Fallback: parse do formato texto/table do OpenSERP
         JsonArray textResults = parseTextResponse(raw);
         if (textResults != null && !textResults.isEmpty()) {
-            log.info("OpenSERP: {} resultados extraídos do formato texto para '{}'",
+            log.debug("OpenSERP: {} resultados extraídos do formato texto para '{}'",
                     textResults.size(), label);
             return textResults;
         }
 
-        log.warn("OpenSERP: não foi possível extrair resultados de '{}'", label);
+        log.debug("OpenSERP: não foi possível extrair resultados de '{}'", label);
         return null;
     }
 
@@ -227,33 +436,124 @@ public class OpenSerpSearch {
     }
 
     /**
-     * Busca documentos (PDF) que contenham o nome da pessoa.
-     * <p>
-     * Utiliza o operador {@code filetype:pdf} do Google para filtrar resultados.
+     * Executa uma busca genérica e retorna os resultados.
      *
-     * @param name  nome da pessoa para buscar nos documentos
+     * @param query termos da busca (já deve estar limpa)
+     * @param label identificador para logs
      * @param limit máximo de resultados
-     * @return JsonArray com resultados de documentos
+     * @return JsonArray com resultados
+     */
+    public JsonArray search(String query, String label, int limit) {
+        if (isCircuitBreakerOpen()) {
+            log.debug("OpenSERP circuit breaker aberto — pulando busca '{}'", label);
+            return new JsonArray();
+        }
+        enforceRateLimit();
+        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+        EndpointEntry ep = nextEndpoint();
+        JsonArray results = fetchWithRetry(ep, encodedQuery, label, 0, limit);
+        return results != null ? results : new JsonArray();
+    }
+
+    /**
+     * Busca documentos de vários tipos (PDF, DOC, DOCX, XLS, XLSX, PPT, etc.).
+     *
+     * @param name  nome da pessoa
+     * @param limit máximo de resultados por tipo
+     * @return JsonArray consolidado de documentos encontrados
      */
     public JsonArray searchDocuments(String name, int limit) {
+        if (isCircuitBreakerOpen()) {
+            log.debug("OpenSERP circuit breaker aberto — pulando busca de documentos para '{}'", name);
+            return new JsonArray();
+        }
+
         JsonArray all = new JsonArray();
+        String[] fileTypes = {"pdf", "doc", "docx"};
 
-        String fileType = "pdf";
-            try {
-                String query = "\"" + name + "\" filetype:" + fileType;
-                String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
-                String url = baseUrl + "/google/search?text=" + encodedQuery + "&limit=" + limit;
+        for (String fileType : fileTypes) {
+            enforceRateLimit();
+            String query = "\"" + name + "\" filetype:" + fileType;
+            String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+            EndpointEntry ep = nextEndpoint();
 
-                JsonArray results = fetchAndParseResults(url, name + " filetype:" + fileType);
-                if (results != null && !results.isEmpty()) {
-                    log.debug("OpenSERP docs ({}): {} resultados para '{}'", fileType, results.size(), name);
-                    all.addAll(results);
-                }
-            } catch (Exception e) {
-                log.debug("OpenSERP docs falhou para filetype={} '{}': {}", fileType, name, e.getMessage());
+            JsonArray results = fetchWithRetry(ep, encodedQuery,
+                    name + " filetype:" + fileType, 0, limit);
+            if (results != null && !results.isEmpty()) {
+                log.debug("OpenSERP docs ({}): {} resultados para '{}'", fileType, results.size(), name);
+                all.addAll(results);
             }
+        }
 
-        log.info("OpenSERP documentos: {} resultados no total para '{}'", all.size(), name);
+        log.debug("OpenSERP documentos: {} resultados no total para '{}'", all.size(), name);
         return all;
+    }
+
+    /**
+     * Busca específica por redes sociais da pessoa.
+     * Ex: {@code "Nome" (linkedin OR facebook OR instagram)}.
+     */
+    public JsonArray searchSocialMedia(String name, int limit) {
+        if (isCircuitBreakerOpen()) {
+            log.warn("OpenSERP circuit breaker aberto — pulando busca social para '{}'", name);
+            return new JsonArray();
+        }
+        enforceRateLimit();
+        String query = "\"" + name + "\" (linkedin OR instagram OR facebook OR twitter OR github OR tiktok)";
+        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+        EndpointEntry ep = nextEndpoint();
+        JsonArray results = fetchWithRetry(ep, encodedQuery, name + " social", 0, limit);
+        return results != null ? results : new JsonArray();
+    }
+
+    /**
+     * Busca por informações profissionais da pessoa (LinkedIn, GitHub, portfolio).
+     * Ex: {@code "Nome" (linkedin OR github OR "about.me" OR "portfolio")}.
+     */
+    public JsonArray searchProfessional(String name, int limit) {
+        if (isCircuitBreakerOpen()) {
+            log.warn("OpenSERP circuit breaker aberto — pulando busca profissional para '{}'", name);
+            return new JsonArray();
+        }
+        enforceRateLimit();
+        String query = "\"" + name + "\" (linkedin OR github OR \"about.me\" OR lattes OR currículo OR CV)";
+        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+        EndpointEntry ep = nextEndpoint();
+        JsonArray results = fetchWithRetry(ep, encodedQuery, name + " professional", 0, limit);
+        return results != null ? results : new JsonArray();
+    }
+
+    /**
+     * Busca por informações de contato (e-mail, telefone).
+     * Ex: {@code "Nome" (email OR contato OR telefone OR phone)}.
+     */
+    public JsonArray searchContact(String name, int limit) {
+        if (isCircuitBreakerOpen()) {
+            log.warn("OpenSERP circuit breaker aberto — pulando busca de contato para '{}'", name);
+            return new JsonArray();
+        }
+        enforceRateLimit();
+        String query = "\"" + name + "\" (email OR contato OR contact OR telefone OR phone OR WhatsApp)";
+        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+        EndpointEntry ep = nextEndpoint();
+        JsonArray results = fetchWithRetry(ep, encodedQuery, name + " contact", 0, limit);
+        return results != null ? results : new JsonArray();
+    }
+
+    /**
+     * Busca por notícias mencionando a pessoa.
+     * Ex: {@code "Nome" (notícia OR news OR release)}.
+     */
+    public JsonArray searchNews(String name, int limit) {
+        if (isCircuitBreakerOpen()) {
+            log.warn("OpenSERP circuit breaker aberto — pulando busca de notícias para '{}'", name);
+            return new JsonArray();
+        }
+        enforceRateLimit();
+        String query = "\"" + name + "\" (notícia OR news OR release OR artigo OR article OR entrevista)";
+        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+        EndpointEntry ep = nextEndpoint();
+        JsonArray results = fetchWithRetry(ep, encodedQuery, name + " news", 0, limit);
+        return results != null ? results : new JsonArray();
     }
 }

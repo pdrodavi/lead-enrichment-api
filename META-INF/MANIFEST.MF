@@ -1,0 +1,10 @@
+Manifest-Version: 1.0
+Created-By: Maven JAR Plugin 3.4.2
+Build-Jdk-Spec: 21
+Specification-Title: Maven Embedder
+Specification-Version: 3.9
+Specification-Vendor: The Apache Software Foundation
+Implementation-Title: Maven Embedder
+Implementation-Version: 3.9.9
+Implementation-Vendor: The Apache Software Foundation
+

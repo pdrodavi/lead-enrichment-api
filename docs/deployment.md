@@ -113,8 +113,8 @@ O Dockerfile usa **multi-stage build**:
 
 | Estágio | Imagem Base | Função |
 |---|---|---|
-| `builder` | maven:3.9-eclipse-temurin-17 | Compilação do JAR |
-| `runtime` | eclipse-temurin:17-jre-alpine | Execução (imagem leve ~200MB) |
+| `builder` | maven:3.9-eclipse-temurin-21 | Compilação do JAR |
+| `runtime` | eclipse-temurin:21-jre-alpine | Execução (imagem leve ~200MB) |
 
 ### Executar container manualmente
 

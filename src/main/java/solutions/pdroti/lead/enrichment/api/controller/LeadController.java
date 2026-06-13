@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -52,20 +55,18 @@ public class LeadController {
     public ResponseEntity<List<LeadResponse>> enrichLead(@Valid @RequestBody LeadRequest request) {
         log.info("POST /enrich email={} name={} domain={}",
                 EmailUtils.mask(request.getEmail()), request.getName(), request.getDomain());
-        var enriched = leadService.enrich(request.getEmail(), request.getDomain(), request.getName());
-        var enrichedResponse = LeadResponse.fromEntity(enriched, objectMapper);
+        var result = leadService.enrichWithDomainLeads(
+                request.getEmail(), request.getDomain(), request.getName());
+        var enrichedResponse = LeadResponse.fromEntity(result.enriched(), objectMapper);
 
-        String domain = enriched.getDomain();
-        if (domain != null && !domain.isBlank()) {
-            var allFromDomain = leadService.findByDomain(domain).stream()
+        // Reaproveita os leads do domínio já retornados pelo service
+        // (evita uma segunda consulta ao banco)
+        if (!result.domainLeads().isEmpty()) {
+            var allFromDomain = result.domainLeads().stream()
                     .map(lead -> LeadResponse.fromEntity(lead, objectMapper))
                     .toList();
-            log.info("Domínio '{}' possui {} lead(s) no total", domain, allFromDomain.size());
-            // Garante que pelo menos o lead enriquecido esteja na resposta
-            if (allFromDomain.isEmpty()) {
-                log.warn("Lead recém-enriquecido não encontrado em findByDomain — retornando apenas ele");
-                return ResponseEntity.ok(List.of(enrichedResponse));
-            }
+            log.debug("Domínio '{}' possui {} lead(s) no total",
+                    result.enriched().getDomain(), allFromDomain.size());
             return ResponseEntity.ok(allFromDomain);
         }
 
@@ -73,34 +74,38 @@ public class LeadController {
     }
 
     /**
-     * Lista todos os leads com status ACTIVE.
+     * Lista todos os leads com status ACTIVE (paginado).
      *
-     * @return 200 com lista de leads ativos
+     * @param pageable parâmetros de paginação (page, size, sort)
+     * @return 200 com página de leads ativos
      */
     @GetMapping
-    public ResponseEntity<List<LeadResponse>> listAll() {
-        var leads = leadService.listAll().stream()
-                .map(lead -> LeadResponse.fromEntity(lead, objectMapper))
-                .toList();
-        return ResponseEntity.ok(leads);
+    public ResponseEntity<Page<LeadResponse>> listAll(
+            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
+        var page = leadService.listAll(pageable)
+                .map(lead -> LeadResponse.fromEntity(lead, objectMapper));
+        return ResponseEntity.ok(page);
     }
 
     /**
-     * Retorna todos os leads ativos de um domínio específico.
+     * Retorna todos os leads ativos de um domínio específico (paginado).
      *
-     * @param domain domínio para filtrar
-     * @return 200 com leads do domínio, ou 204 se nenhum encontrado
+     * @param domain   domínio para filtrar
+     * @param pageable parâmetros de paginação (page, size, sort)
+     * @return 200 com página de leads do domínio, ou 204 se nenhum encontrado
      */
     @GetMapping("/domain/{domain}")
-    public ResponseEntity<List<LeadResponse>> getLeadsByDomain(@PathVariable String domain) {
-        log.info("GET /domain/{}", domain);
-        var leads = leadService.findByDomain(domain).stream()
-                .map(lead -> LeadResponse.fromEntity(lead, objectMapper))
-                .toList();
-        if (leads.isEmpty()) {
+    public ResponseEntity<Page<LeadResponse>> getLeadsByDomain(
+            @PathVariable String domain,
+            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
+        log.info("GET /domain/{} page={} size={}", domain,
+                pageable.getPageNumber(), pageable.getPageSize());
+        var page = leadService.findByDomain(domain, pageable)
+                .map(lead -> LeadResponse.fromEntity(lead, objectMapper));
+        if (page.isEmpty()) {
             return ResponseEntity.noContent().build();
         }
-        return ResponseEntity.ok(leads);
+        return ResponseEntity.ok(page);
     }
 
     /**

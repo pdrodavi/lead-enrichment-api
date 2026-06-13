@@ -3,8 +3,8 @@ package solutions.pdroti.lead.enrichment.api.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import solutions.pdroti.lead.enrichment.api.dto.SerpResultItem;
 import solutions.pdroti.lead.enrichment.api.dto.SerpSearchResult;
@@ -16,17 +16,19 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.stream.Stream;
 
 /**
  * Responsável pelo enriquecimento de leads via OpenSERP (Google Search).
  * <p>
- * Busca o nome da pessoa no Google, extrai links, redes sociais,
- * e-mails expostos, menções ao nome e documentos relacionados.
+ * Busca o nome da pessoa no Google em múltiplas frentes:
+ * busca geral, redes sociais, perfil profissional, informações de
+ * contato, notícias e documentos. Todas as buscas rodam em paralelo.
  * Extraído do {@code LeadService} para manter a responsabilidade única (SRP).
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class OpenSerpEnricher {
 
     private static final int OPENSERP_MAX_RESULTS = 15;
@@ -34,6 +36,17 @@ public class OpenSerpEnricher {
     private final OpenSerpSearch openSerpSearch;
     private final SocialDiscoveryService socialDiscoveryService;
     private final ObjectMapper objectMapper;
+    private final Executor enrichmentExecutor;
+
+    public OpenSerpEnricher(OpenSerpSearch openSerpSearch,
+                             SocialDiscoveryService socialDiscoveryService,
+                             ObjectMapper objectMapper,
+                             @Qualifier("enrichmentExecutor") Executor enrichmentExecutor) {
+        this.openSerpSearch = openSerpSearch;
+        this.socialDiscoveryService = socialDiscoveryService;
+        this.objectMapper = objectMapper;
+        this.enrichmentExecutor = enrichmentExecutor;
+    }
 
     /** Agrupa as coleções de saída do processamento do OpenSERP. */
     private record SerpProcessingContext(
@@ -42,43 +55,53 @@ public class OpenSerpEnricher {
             Set<String> socialLinksFound,
             List<String> nameMentions,
             List<String> emails,
+            List<String> phones,
             List<String> foundDocs
     ) {
         static SerpProcessingContext empty() {
             return new SerpProcessingContext(
                     new ArrayList<>(), new LinkedHashSet<>(), new LinkedHashSet<>(),
-                    new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+                    new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
         }
     }
 
     /**
-     * Enriquece o lead com dados do OpenSERP: busca o nome no Google,
-     * extrai links, redes sociais, e-mails expostos e menções ao nome.
+     * Enriquece o lead com dados do OpenSERP: múltiplas buscas em paralelo.
      *
      * @param lead entidade a ser enriquecida
      * @param name nome da pessoa para busca
      */
     public void enrich(Lead lead, String name) {
-        log.info("Buscando '{}' no OpenSERP", name);
+        log.info("Buscando '{}' no OpenSERP (6 frentes em paralelo)", name);
 
         lead.setExposedEmails(null);
         lead.setDorkFindings(0);
         lead.setOpenSerpRawData(null);
         lead.setFoundDocuments(null);
 
-        // fetchResults e fetchDocuments executam em PARALELO
-        CompletableFuture<JsonArray> resultsFuture = CompletableFuture.supplyAsync(() -> fetchResults(name));
-        CompletableFuture<JsonArray> docsFuture = CompletableFuture.supplyAsync(() -> fetchDocuments(name));
-        CompletableFuture.allOf(resultsFuture, docsFuture).join();
+        // 6 buscas em PARALELO (pool dedicado)
+        CompletableFuture<JsonArray> generalFuture = supplySearch(() -> fetchResults(name));
+        CompletableFuture<JsonArray> docsFuture = supplySearch(() -> fetchDocuments(name));
+        CompletableFuture<JsonArray> socialFuture = supplySearch(() -> fetchSocial(name));
+        CompletableFuture<JsonArray> professionalFuture = supplySearch(() -> fetchProfessional(name));
+        CompletableFuture<JsonArray> contactFuture = supplySearch(() -> fetchContact(name));
+        CompletableFuture<JsonArray> newsFuture = supplySearch(() -> fetchNews(name));
 
-        JsonArray results = resultsFuture.join();
-        JsonArray docResults = docsFuture.join();
+        CompletableFuture.allOf(generalFuture, docsFuture, socialFuture,
+                professionalFuture, contactFuture, newsFuture).join();
 
-        boolean hasResults = (results != null && !results.isEmpty());
-        boolean hasDocs = (docResults != null && !docResults.isEmpty());
+        JsonArray general = generalFuture.join();
+        JsonArray docs = docsFuture.join();
+        JsonArray social = socialFuture.join();
+        JsonArray professional = professionalFuture.join();
+        JsonArray contact = contactFuture.join();
+        JsonArray news = newsFuture.join();
 
-        if (!hasResults && !hasDocs) {
-            log.warn("OpenSERP não retornou resultados para '{}'", name);
+        boolean hasAny = Stream.of(general, docs, social, professional, contact, news)
+                .anyMatch(r -> r != null && !r.isEmpty());
+
+        if (!hasAny) {
+            log.warn("OpenSERP não retornou resultados para '{}' — possível bloqueio do Google (CAPTCHA).", name);
             lead.setSocialLinks(new ArrayList<>());
             lead.setExposedEmails(new ArrayList<>());
             lead.setNameMentions(new ArrayList<>());
@@ -90,12 +113,13 @@ public class OpenSerpEnricher {
         var socialDomains = socialDiscoveryService.getSocialDomains();
         SerpProcessingContext ctx = SerpProcessingContext.empty();
 
-        if (hasResults) {
-            processResults(results, name, ctx, socialDomains);
-        }
-        if (hasDocs) {
-            processResults(docResults, name, ctx, socialDomains);
-        }
+        // Processa cada fonte
+        processResults(general, name, ctx, socialDomains, "Geral");
+        processResults(docs, name, ctx, socialDomains, "Documentos");
+        processResults(social, name, ctx, socialDomains, "Redes Sociais");
+        processResults(professional, name, ctx, socialDomains, "Profissional");
+        processResults(contact, name, ctx, socialDomains, "Contato");
+        processResults(news, name, ctx, socialDomains, "Notícias");
 
         lead.setSocialLinks(new ArrayList<>(ctx.socialLinksFound()));
         lead.setDiscoveredUrls(new ArrayList<>(ctx.allLinks()));
@@ -106,21 +130,29 @@ public class OpenSerpEnricher {
         lead.setOpenSerpRawData(serializeResult(
                 new SerpSearchResult(name, ctx.matchedItems().size(), ctx.matchedItems())));
 
-        log.info("OpenSERP: {} links totais, {} sociais, {} e-mails, {} menções, {} docs, {} resultados estruturados",
+        log.info("OpenSERP: {} links, {} sociais, {} e-mails, {} telefones, {} menções, {} docs, {} estruturados",
                 ctx.allLinks().size(), ctx.socialLinksFound().size(), ctx.emails().size(),
-                ctx.nameMentions().size(), ctx.foundDocs().size(), ctx.matchedItems().size());
+                ctx.phones().size(), ctx.nameMentions().size(), ctx.foundDocs().size(), ctx.matchedItems().size());
+    }
+
+    /** Executa um supplier com try-catch, retornando array vazio em caso de erro. */
+    private CompletableFuture<JsonArray> supplySearch(java.util.function.Supplier<JsonArray> supplier) {
+        return CompletableFuture.supplyAsync(() -> {
+            try { return supplier.get(); }
+            catch (Exception e) {
+                log.warn("OpenSERP busca falhou: {}", e.getMessage());
+                return new JsonArray();
+            }
+        }, enrichmentExecutor);
     }
 
     /**
-     * Processa um JsonArray de resultados do OpenSERP, aplicando o filtro de nome.
-     *
-     * @param results      resultados brutos da busca
-     * @param name         nome para filtrar
-     * @param ctx          contexto de processamento (coleções de saída)
-     * @param socialDomains lista de domínios de redes sociais conhecidos
+     * Processa um JsonArray de resultados e mescla no contexto.
      */
     private void processResults(JsonArray results, String name,
-                                 SerpProcessingContext ctx, List<String> socialDomains) {
+                                 SerpProcessingContext ctx, List<String> socialDomains, String source) {
+        if (results == null || results.isEmpty()) return;
+
         for (int i = 0; i < results.size(); i++) {
             JsonObject r = results.get(i).getAsJsonObject();
             String link = r.has("url") ? r.get("url").getAsString() : null;
@@ -129,7 +161,15 @@ public class OpenSerpEnricher {
 
             if (link == null) continue;
 
-            if (!DataParser.nameMatchesExactly(snippet, name) && !DataParser.nameMatchesExactly(title, name)) {
+            // Filtra apenas resultados que mencionam o nome
+            boolean nameInSnippet = DataParser.nameMatchesExactly(snippet, name);
+            boolean nameInTitle = DataParser.nameMatchesExactly(title, name);
+            // Na busca social/profissional já filtrada, aceita mesmo sem nome exato
+            boolean isTargetedSearch = "Redes Sociais".equals(source)
+                    || "Profissional".equals(source)
+                    || "Contato".equals(source);
+
+            if (!nameInSnippet && !nameInTitle && !isTargetedSearch) {
                 continue;
             }
 
@@ -148,38 +188,56 @@ public class OpenSerpEnricher {
                 ctx.socialLinksFound().add(link);
             }
 
-            ctx.nameMentions().add("Nome completo encontrado em: " + link);
+            if (nameInSnippet || nameInTitle) {
+                ctx.nameMentions().add("Nome completo encontrado em: " + link + " (" + source + ")");
+            }
+
             DataParser.extractEmails(ctx.emails(), snippet, title);
+            DataParser.extractPhones(ctx.phones(), snippet);
         }
     }
 
     private JsonArray fetchResults(String name) {
-        try {
-            JsonArray results = openSerpSearch.searchPerson(name, OPENSERP_MAX_RESULTS);
-            log.info("OpenSERP: {} resultados brutos para '{}'", results.size(), name);
-            return results;
-        } catch (Exception e) {
-            log.warn("OpenSERP falhou para '{}': {}", name, e.getMessage());
-            return new JsonArray();
-        }
+        JsonArray results = openSerpSearch.searchPerson(name, OPENSERP_MAX_RESULTS);
+        log.debug("OpenSERP geral: {} resultados para '{}'", results.size(), name);
+        return results;
     }
 
     private JsonArray fetchDocuments(String name) {
-        try {
-            JsonArray docResults = openSerpSearch.searchDocuments(name, OPENSERP_MAX_RESULTS);
-            log.info("OpenSERP documentos: {} resultados brutos para '{}'", docResults.size(), name);
-            return docResults;
-        } catch (Exception e) {
-            log.warn("OpenSERP documentos falhou para '{}': {}", name, e.getMessage());
-            return new JsonArray();
-        }
+        JsonArray results = openSerpSearch.searchDocuments(name, OPENSERP_MAX_RESULTS);
+        log.debug("OpenSERP documentos: {} resultados para '{}'", results.size(), name);
+        return results;
+    }
+
+    private JsonArray fetchSocial(String name) {
+        JsonArray results = openSerpSearch.searchSocialMedia(name, OPENSERP_MAX_RESULTS);
+        log.debug("OpenSERP redes sociais: {} resultados para '{}'", results.size(), name);
+        return results;
+    }
+
+    private JsonArray fetchProfessional(String name) {
+        JsonArray results = openSerpSearch.searchProfessional(name, OPENSERP_MAX_RESULTS);
+        log.debug("OpenSERP profissional: {} resultados para '{}'", results.size(), name);
+        return results;
+    }
+
+    private JsonArray fetchContact(String name) {
+        JsonArray results = openSerpSearch.searchContact(name, OPENSERP_MAX_RESULTS);
+        log.debug("OpenSERP contato: {} resultados para '{}'", results.size(), name);
+        return results;
+    }
+
+    private JsonArray fetchNews(String name) {
+        JsonArray results = openSerpSearch.searchNews(name, OPENSERP_MAX_RESULTS);
+        log.debug("OpenSERP notícias: {} resultados para '{}'", results.size(), name);
+        return results;
     }
 
     private String serializeResult(SerpSearchResult result) {
         try {
             return objectMapper.writeValueAsString(result);
         } catch (Exception e) {
-            log.warn("Falha ao serializar resultado estruturado do OpenSERP: {}", e.getMessage());
+            log.warn("Falha ao serializar resultado: {}", e.getMessage());
             return "{\"query\":\"\",\"totalResults\":0,\"items\":[]}";
         }
     }

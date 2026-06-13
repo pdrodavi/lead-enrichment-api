@@ -75,7 +75,7 @@ public class RdapService {
 
         // Para .com.br, também consulta Registro.br (dados mais completos)
         if (lowerDomain.endsWith(".com.br")) {
-            log.info("Domínio .com.br detectado — consultando Registro.br: {}", lowerDomain);
+            log.debug("Domínio .com.br detectado — consultando Registro.br: {}", lowerDomain);
             RdapData registroBrResult = queryRegistroBr(lowerDomain);
             if (registroBrResult.rawJson() != null) {
                 result = mergeResults(registroBrResult, identityResult);
