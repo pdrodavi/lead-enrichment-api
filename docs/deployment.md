@@ -2,7 +2,7 @@
 
 ## Pré-requisitos
 
-- **JDK 17+** — Compilação e execução local
+- **JDK 21+** — Compilação e execução local (Virtual Threads)
 - **Maven 3.8+** — Gerenciamento de dependências
 - **Docker + Docker Compose** — Containerização e orquestração
 - **PostgreSQL 16** — Banco de dados (apenas para execução local sem Docker)
@@ -40,7 +40,10 @@ docker compose down -v
 | Serviço | Imagem | Porta | Descrição |
 |---|---|---|---|
 | `postgres` | postgres:16 | 5433 | Banco de dados relacional |
-| `openserp` | karust/openserp:latest | 7000 | Google Search API self-hosted |
+| `openserp` | karust/openserp:latest | 7000 | Google Search API (instância 1) |
+| `openserp2` | karust/openserp:latest | 7002 | Google Search API (instância 2) |
+| `openserp3` | karust/openserp:latest | 7003 | Google Search API (instância 3) |
+| `jaeger` | jaegertracing/all-in-one:1.39 | 4317, 4318, 16686 | Tracing distribuído (OTLP + UI) |
 | `app` | build local | 8781 | Lead Enrichment API |
 
 ### Rede
@@ -71,13 +74,15 @@ cp .env.example .env
 ### 4. Executar a aplicação
 
 ```bash
-# Opção A — Script run.bat (carrega .env automaticamente)
+# Opção A — Script build-jdk21.bat (JDK 21 + .env automático)
+build-jdk21.bat spring-boot:run -Dmaven.test.skip=true
+
+# Opção B — Script run.bat (fallback JDK 17)
 run.bat
 
-# Opção B — Ctrl+Shift+B no VS Code (usa a task configurada)
-# A task já executa run.bat
+# Opção C — Ctrl+Shift+B no VS Code (usa a task configurada)
 
-# Opção C — Maven direto (exige variáveis exportadas)
+# Opção D — Maven direto (exige variáveis exportadas)
 set API_KEY=minha-chave
 set ENCRYPTION_SECRET=minha-chave-aes-16bytes
 mvn spring-boot:run -Dmaven.test.skip=true
@@ -96,7 +101,10 @@ Todas as configurações sensíveis são lidas do arquivo `.env` ou de variávei
 | `DB_PASSWORD` | ✅ | Senha do banco | — |
 | `API_KEY` | ✅ | Chave de autenticação da API | — |
 | `ENCRYPTION_SECRET` | ✅ | Secret AES-128-GCM (mín. 16 bytes) | — |
-| `OPENSERP_API_URL` | ✅ | URL do OpenSERP self-hosted | `https://openserp.exemplo.com` |
+| `OPENSERP_API_URL` | ✅ | URL do OpenSERP self-hosted | `http://localhost:7000` |
+| `OPENSERP_API_URL_2` | ❌ | URL do OpenSERP 2 | `http://localhost:7002` |
+| `OPENSERP_API_URL_3` | ❌ | URL do OpenSERP 3 | `http://localhost:7003` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | ❌ | Endpoint OTLP para Jaeger | `http://localhost:4318/v1/traces` |
 | `PORT` | ❌ | Porta da aplicação (default: 8081) | `8081` |
 
 > ⚠️ **Nunca** commite o `.env` — ele já está no `.gitignore`.
@@ -125,8 +133,8 @@ docker run -d \
   -e DB_URL=jdbc:postgresql://host.docker.internal:5433/postgres \
   -e DB_USERNAME=postgres \
   -e DB_PASSWORD=pgsqldev \
-  -e API_KEY=b6vxAgj5KG5HPGCKlQQ7 \
-  -e ENCRYPTION_SECRET=f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8= \
+   -e API_KEY=sua-chave-aqui \
+   -e ENCRYPTION_SECRET=sua-chave-aes-aqui \
   lead-enrichment-api:latest
 ```
 
@@ -171,7 +179,7 @@ social-discovery:
 | `DB_PASSWORD` | Senha do banco | `pgsqldev` | Sim |
 | `API_KEY` | Chave para autenticação via header `X-API-KEY` | `b6vxAgj5KG5HPGCKlQQ7` | Sim |
 | `ENCRYPTION_SECRET` | Chave AES-128 para criptografia de e-mails (mín. 16 bytes) | `f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=` | Sim |
-| `SERPER_API_URL` | URL base da API OpenSERP | `http://localhost:7000` | Sim (se usar OpenSERP) |
+| `OPENSERP_API_URL` | URL base da API OpenSERP | `http://localhost:7000` | Sim |
 | `PORT` | Porta do servidor HTTP | `8081` | Sim |
 | `ENV` | Sufixo de ambiente para nomes de container | `dev` | Opcional |
 
@@ -196,7 +204,7 @@ export DB_USERNAME=<usuario-prod>
 export DB_PASSWORD=<senha-forte>
 export API_KEY=<chave-api-forte>
 export ENCRYPTION_SECRET=<chave-aes-32bytes-base64>
-export SERPER_API_URL=http://<openserp-host>:7000
+export OPENSERP_API_URL=http://<openserp-host>:7000
 export PORT=8081
 ```
 
