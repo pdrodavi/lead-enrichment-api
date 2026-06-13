@@ -60,6 +60,7 @@ public class Lead implements Serializable {
     // === DNS — todos os registros consultados ===
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Column(length = 2048)
     private List<String> dnsMxRecords;
 
     @ElementCollection(fetch = FetchType.LAZY)
@@ -72,20 +73,24 @@ public class Lead implements Serializable {
     private List<String> dnsCnameRecords;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Column(length = 4096)
     private List<String> dnsTxtRecords;
 
     @ElementCollection(fetch = FetchType.LAZY)
     private List<String> technologies;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Column(length = 2048)
     private List<String> socialLinks;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Column(length = 2048)
     private List<String> socialProfileSummaries;
 
     // === Google Dorks — dados de info exposta ===
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Column(length = 2048)
     private List<String> exposedEmails;
 
     private int dorkFindings;
@@ -112,9 +117,11 @@ public class Lead implements Serializable {
     private LocalDateTime rdapExpirationDate;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Column(length = 2048)
     private List<String> rdapNameservers;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Column(length = 512)
     private List<String> rdapStatus;
 
     @Column(length = 20)
