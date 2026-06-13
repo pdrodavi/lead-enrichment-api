@@ -35,7 +35,8 @@ paths:
         Enriquece um lead com dados públicos do domínio (DNS, RDAP, tecnologias,
         redes sociais) ou via OpenSERP se não houver domínio.
 
-        O pipeline executa OpenSERP e DomainEnricher **em paralelo** via CompletableFuture.
+        O pipeline executa 6 buscas OpenSERP + 4 serviços de domínio **em paralelo**
+        via CompletableFuture com Virtual Threads (Java 21). Cache Caffeine (TTL 1h).
         Retorna todos os leads do mesmo domínio do lead enriquecido.
       operationId: "enrichLead"
       security:
@@ -72,20 +73,40 @@ paths:
     get:
       tags:
         - "Leads"
-      summary: "Listar todos os leads"
-      description: "Retorna todos os leads com status ACTIVE (exclui registros deletados)."
+      summary: "Listar todos os leads (paginado)"
+      description: "Retorna leads com status ACTIVE com paginação (default: page=0, size=20, sort=createdAt)."
       operationId: "listAllLeads"
       security:
         - ApiKeyAuth: []
+      parameters:
+        - name: "page"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            default: 0
+          description: "Número da página (0-based)"
+        - name: "size"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            default: 20
+          description: "Itens por página"
+        - name: "sort"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            default: "createdAt"
+          description: "Campo de ordenação (ex: name,asc ou createdAt,desc)"
       responses:
         "200":
-          description: "Lista de leads ativos"
+          description: "Página de leads ativos"
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/LeadResponse"
+                $ref: "#/components/schemas/PagedLeadResponse"
         "401":
           description: "API Key ausente ou inválida"
           content:
@@ -229,8 +250,8 @@ paths:
     get:
       tags:
         - "Leads"
-      summary: "Listar leads por domínio"
-      description: "Retorna todos os leads ativos que pertencem ao domínio informado."
+      summary: "Listar leads por domínio (paginado)"
+      description: "Retorna leads ativos do domínio informado com paginação."
       operationId: "getLeadsByDomain"
       security:
         - ApiKeyAuth: []
@@ -242,15 +263,34 @@ paths:
             type: "string"
           description: "Domínio para filtrar (ex: exemplo.com)"
           example: "exemplo.com"
+        - name: "page"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            default: 0
+          description: "Número da página (0-based)"
+        - name: "size"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            default: 20
+          description: "Itens por página"
+        - name: "sort"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            default: "createdAt"
+          description: "Campo de ordenação (ex: name,asc)"
       responses:
         "200":
-          description: "Leads encontrados para o domínio"
+          description: "Página de leads do domínio"
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/LeadResponse"
+                $ref: "#/components/schemas/PagedLeadResponse"
         "204":
           description: "Nenhum lead encontrado para o domínio"
         "401":
@@ -290,6 +330,31 @@ components:
           type: "string"
           description: "Nome da pessoa (obrigatório)"
           example: "João Silva"
+
+    # ==================== Paginated Response ====================
+    PagedLeadResponse:
+      type: "object"
+      description: "Resposta paginada de leads"
+      properties:
+        content:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/LeadResponse"
+        page:
+          type: "object"
+          properties:
+            size:
+              type: "integer"
+              example: 20
+            totalElements:
+              type: "integer"
+              example: 42
+            totalPages:
+              type: "integer"
+              example: 3
+            number:
+              type: "integer"
+              example: 0
 
     # ==================== Response ====================
     LeadResponse:

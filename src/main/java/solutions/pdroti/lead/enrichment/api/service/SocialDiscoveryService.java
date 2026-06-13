@@ -1,6 +1,6 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
-import lombok.RequiredArgsConstructor;
+import com.github.benmanes.caffeine.cache.Cache;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -14,12 +14,14 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SocialDiscoveryService {
 
     private static final int TIMEOUT_MS = 10_000;
@@ -28,12 +30,35 @@ public class SocialDiscoveryService {
     private static final String PROTOCOL_RELATIVE_PREFIX = "//";
 
     private final SocialDiscoveryProperties properties;
+    private final Cache<String, List<String>> socialLinksCache;
+    private final Executor enrichmentExecutor;
+
+    public SocialDiscoveryService(SocialDiscoveryProperties properties,
+                                   Cache<String, List<String>> socialLinksCache,
+                                   @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
+                                   java.util.concurrent.Executor enrichmentExecutor) {
+        this.properties = properties;
+        this.socialLinksCache = socialLinksCache;
+        this.enrichmentExecutor = enrichmentExecutor;
+    }
 
     /** Busca links de redes sociais no HTML do domínio informado. */
     public List<String> discoverSocialLinks(String domain) {
+        if (domain == null || domain.isBlank()) return List.of();
+
+        // Tenta cache primeiro
+        String cacheKey = domain.toLowerCase().strip();
+        List<String> cached = socialLinksCache.getIfPresent(cacheKey);
+        if (cached != null) {
+            log.debug("SocialLinks cache hit para {}", domain);
+            return cached;
+        }
+
         try {
             Document doc = fetchPage(domain);
-            return extractSocialLinks(doc);
+            List<String> links = extractSocialLinks(doc);
+            socialLinksCache.put(cacheKey, links);
+            return links;
         } catch (Exception e) {
             log.debug("Falha ao buscar social links de {}: {}", domain, e.getMessage());
             return List.of();
@@ -137,7 +162,7 @@ public class SocialDiscoveryService {
     // (externalizado para application.yml → social-discovery.platform-names)
 
     /**
-     * Tenta fazer scraping de cada URL de rede social encontrada
+     * Tenta fazer scraping de cada URL de rede social encontrada em paralelo
      * e retorna dados estruturados (título, descrição). Erros são
      * ignorados silenciosamente — cada perfil que falhar é pulado.
      */
@@ -146,23 +171,32 @@ public class SocialDiscoveryService {
             return List.of();
         }
 
-        List<SocialProfileData> results = new ArrayList<>();
+        // Scraping paralelo — cada perfil social é scaneado simultaneamente
+        var futures = socialUrls.stream()
+                .map(url -> CompletableFuture.supplyAsync(
+                        () -> scrapeProfileSafely(url), enrichmentExecutor))
+                .toList();
 
-        for (String url : socialUrls) {
-            try {
-                String platform = identifyPlatform(url);
-                Document doc = fetchSocialPage(url);
-                String title = extractPageTitle(doc);
-                String description = extractMetaDescription(doc);
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
+                .toList();
+    }
 
-                results.add(new SocialProfileData(url, platform, title, description));
-                log.info("Perfil scrapy: {} — {}", platform, title);
-            } catch (Exception e) {
-                log.debug("Falha ao scrapear {}: {}", url, e.getMessage());
-            }
+    /** Scrapeia um perfil social com try-catch, retornando null em caso de erro. */
+    private SocialProfileData scrapeProfileSafely(String url) {
+        try {
+            String platform = identifyPlatform(url);
+            Document doc = fetchSocialPage(url);
+            String title = extractPageTitle(doc);
+            String description = extractMetaDescription(doc);
+            var profile = new SocialProfileData(url, platform, title, description);
+            log.debug("Perfil scrapy: {} — {}", platform, title);
+            return profile;
+        } catch (Exception e) {
+            log.debug("Falha ao scrapear {}: {}", url, e.getMessage());
+            return null;
         }
-
-        return List.copyOf(results);
     }
 
     /** Identifica o nome da plataforma a partir da URL. */

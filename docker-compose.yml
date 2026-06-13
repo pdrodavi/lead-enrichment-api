@@ -33,6 +33,41 @@ services:
     networks:
       - lead-net
 
+  openserp2:
+    image: karust/openserp:latest
+    container_name: openserp-${ENV:-dev}-2
+    restart: unless-stopped
+    ports:
+      - "7002:7000"
+    command: serve -a 0.0.0.0 -p 7000
+    networks:
+      - lead-net
+
+  openserp3:
+    image: karust/openserp:latest
+    container_name: openserp-${ENV:-dev}-3
+    restart: unless-stopped
+    ports:
+      - "7003:7000"
+    command: serve -a 0.0.0.0 -p 7000
+    networks:
+      - lead-net
+
+  # ===================== Jaeger (OpenTelemetry Collector + UI) =====================
+  jaeger:
+    image: jaegertracing/all-in-one:1.39
+    container_name: jaeger-${ENV:-dev}
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "16686:16686"
+    networks:
+      - lead-net
+      - npm
+    restart: unless-stopped
+
   # ===================== Lead Enrichment API =====================
   app:
     build:
@@ -42,9 +77,12 @@ services:
         DB_USERNAME: ${DB_USERNAME:-${PG_USER:-postgres}}
         DB_PASSWORD: ${DB_PASSWORD:-${PG_PASSWORD:-pgsqldev}}
         OPENSERP_API_URL: ${OPENSERP_API_URL:-http://openserp-${ENV:-dev}:7000}
+        OPENSERP_API_URL_2: ${OPENSERP_API_URL_2:-http://openserp-${ENV:-dev}-2:7000}
+        OPENSERP_API_URL_3: ${OPENSERP_API_URL_3:-http://openserp-${ENV:-dev}-3:7000}
+        OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger-${ENV:-dev}:4318/v1/traces}
         API_KEY: ${API_KEY:?Configure API_KEY no .env}
         ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?Configure ENCRYPTION_SECRET no .env}
-        PORT: ${PORT:-8781}
+        PORT: ${PORT:-8081}
     container_name: lead-enrichment-api-${ENV:-dev}
     ports:
       - "${PORT:-8781}:8081"
@@ -53,6 +91,9 @@ services:
       DB_USERNAME: ${DB_USERNAME:-${PG_USER:-postgres}}
       DB_PASSWORD: ${DB_PASSWORD:-${PG_PASSWORD:-pgsqldev}}
       OPENSERP_API_URL: ${OPENSERP_API_URL:-http://openserp-${ENV:-dev}:7000}
+      OPENSERP_API_URL_2: ${OPENSERP_API_URL_2:-http://openserp-${ENV:-dev}-2:7000}
+      OPENSERP_API_URL_3: ${OPENSERP_API_URL_3:-http://openserp-${ENV:-dev}-3:7000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger-${ENV:-dev}:4318/v1/traces}
       API_KEY: ${API_KEY:?Configure API_KEY no .env}
       ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?Configure ENCRYPTION_SECRET no .env}
       PORT: ${PORT:-8081}
@@ -61,9 +102,14 @@ services:
         condition: service_healthy
       openserp:
         condition: service_started
+      openserp2:
+        condition: service_started
+      openserp3:
+        condition: service_started  
     restart: unless-stopped
     networks:
       - lead-net
+      - npm
 
 volumes:
   postgres_data:
@@ -72,3 +118,5 @@ networks:
   lead-net:
     driver: bridge
     name: lead-enrichment-api-network
+  npm:
+    external: true 

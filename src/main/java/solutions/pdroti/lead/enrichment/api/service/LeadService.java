@@ -13,9 +13,13 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 /**
  * Orquestrador do pipeline de enriquecimento de leads.
@@ -28,7 +32,8 @@ import lombok.extern.slf4j.Slf4j;
  * </ul>
  * <p>
  * Otimização: OpenSERP e Domain enrichment executam em paralelo via
- * {@link CompletableFuture}, reduzindo o tempo total pela duração do mais lento.
+ * {@link CompletableFuture} com pool de threads dedicado,
+ * reduzindo o tempo total pela duração do mais lento.
  */
 @Service
 @Slf4j
@@ -39,8 +44,37 @@ public class LeadService {
     private final OpenSerpEnricher openSerpEnricher;
     private final DomainEnricher domainEnricher;
 
+    @Qualifier("enrichmentExecutor")
+    private final Executor enrichmentExecutor;
+
     private static final int DATA_RETENTION_DAYS = 365;
     static final String DEFAULT_STATUS = "ACTIVE";
+
+    /**
+     * Resultado do enriquecimento com os leads do mesmo domínio,
+     * evitando uma segunda consulta ao banco no controller.
+     */
+    public record EnrichResult(Lead enriched, List<Lead> domainLeads) {}
+
+    /**
+     * Enriquece um lead com dados públicos e retorna também os leads do mesmo domínio.
+     *
+     * @param email  e-mail do lead (obrigatório — identificador único)
+     * @param domain domínio para enriquecimento (opcional, extraído do e-mail se ausente)
+     * @param name   nome da pessoa (obrigatório)
+     * @return {@link EnrichResult} com lead persistido + leads do mesmo domínio
+     */
+    @Transactional
+    public EnrichResult enrichWithDomainLeads(String email, String domain, String name) {
+        Lead enriched = enrich(email, domain, name);
+        String d = enriched.getDomain();
+        List<Lead> domainLeads = (d != null && !d.isBlank())
+                ? leadRepository.findByStatus(DEFAULT_STATUS).stream()
+                        .filter(l -> d.equals(l.getDomain()))
+                        .toList()
+                : List.of();
+        return new EnrichResult(enriched, domainLeads);
+    }
 
     /**
      * Enriquece um lead com dados públicos.
@@ -61,30 +95,34 @@ public class LeadService {
 
         Lead existing = leadRepository.findByEmailHash(EmailUtils.hash(email)).orElse(null);
         if (existing != null) {
-            log.info("Lead já existe, reenriquecendo: ID={}", existing.getId());
+            log.debug("Lead já existe, reenriquecendo: ID={}", existing.getId());
         }
 
         return performFullEnrichment(existing, email, domain, name);
     }
 
     /**
-     * Retorna todos os leads com status ACTIVE.
+     * Retorna todos os leads com status ACTIVE (paginado).
      *
-     * @return lista de leads ativos
+     * @param pageable parâmetros de paginação (page, size, sort)
+     * @return página de leads ativos
      */
-    public List<Lead> listAll() {
-        return leadRepository.findByStatus(DEFAULT_STATUS);
+    @Transactional(readOnly = true)
+    public Page<Lead> listAll(Pageable pageable) {
+        return leadRepository.findByStatus(DEFAULT_STATUS, pageable);
     }
 
     /**
-     * Retorna todos os leads ativos que pertencem ao domínio informado.
+     * Retorna todos os leads ativos que pertencem ao domínio informado (paginado).
      *
-     * @param domain domínio para filtrar (ex: "exemplo.com")
-     * @return lista de leads do domínio, ou lista vazia se domain for inválido
+     * @param domain   domínio para filtrar (ex: "exemplo.com")
+     * @param pageable parâmetros de paginação (page, size, sort)
+     * @return página de leads do domínio, ou página vazia se domain for inválido
      */
-    public List<Lead> findByDomain(String domain) {
-        if (!StringUtils.hasText(domain)) return List.of();
-        return leadRepository.findByDomainAndStatus(domain, DEFAULT_STATUS);
+    @Transactional(readOnly = true)
+    public Page<Lead> findByDomain(String domain, Pageable pageable) {
+        if (!StringUtils.hasText(domain)) return Page.empty();
+        return leadRepository.findByDomainAndStatus(domain, DEFAULT_STATUS, pageable);
     }
 
     /**
@@ -94,6 +132,7 @@ public class LeadService {
      * @param id identificador do lead em formato string
      * @return Optional com o lead encontrado, ou vazio se não existir ou estiver deletado
      */
+    @Transactional(readOnly = true)
     public Optional<Lead> findById(String id) {
         return LeadDeletionService.parseNumericId(id)
                 .flatMap(leadRepository::findById)
@@ -144,11 +183,12 @@ public class LeadService {
         domainEnricher.resetEnrichmentData(lead);
 
         // OpenSERP e domínio executam em PARALELO via CompletableFuture
+        // com pool de threads dedicado (enrichmentExecutor)
         CompletableFuture<Void> openSerpFuture = CompletableFuture.runAsync(() ->
-                openSerpEnricher.enrich(lead, name));
+                openSerpEnricher.enrich(lead, name), enrichmentExecutor);
 
         CompletableFuture<Void> domainFuture = StringUtils.hasText(domain)
-                ? CompletableFuture.runAsync(() -> domainEnricher.enrich(lead, domain, name))
+                ? CompletableFuture.runAsync(() -> domainEnricher.enrich(lead, domain, name), enrichmentExecutor)
                 : CompletableFuture.completedFuture(null);
 
         // Aguarda ambos finalizarem

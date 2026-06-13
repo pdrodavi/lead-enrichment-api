@@ -3,8 +3,15 @@ server:
   tomcat:
     connection-timeout: 60000
     keep-alive-timeout: 60000
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/plain
+    min-response-size: 1024
 
 spring:
+  threads:
+    virtual:
+      enabled: true
   application:
     name: lead-enrichment-api
   mvc:
@@ -25,12 +32,21 @@ spring:
 
 open-serp:
   api:
-    url: ${OPENSERP_API_URL:http://localhost:7000}
+    url: ${OPENSERP_API_URL:http://173.249.3.202:7000}
+  # Lista de endpoints OpenSERP com proxies rotativos.
+  # Preencha para evitar bloqueio CAPTCHA do Google.
+  # Se vazia, usa o api.url acima (comportamento padrão).
+  endpoints:
+    - url: ${OPENSERP_API_URL:http://173.249.3.202:7000}
+    - url: ${OPENSERP_API_URL_2:http://173.249.3.202:7002}
+    #   proxy: http://user:pass@proxy1:8080
+    - url: ${OPENSERP_API_URL_3:http://173.249.3.202:7003}
+    #   proxy: http://user:pass@proxy2:8080
 
 api:
-  key: ${API_KEY}
+  key: ${API_KEY:4L4VGPacx3WirVqydSRKdgRy66wePqGEUxL0lQR7}
   encryption:
-    secret: ${ENCRYPTION_SECRET}
+    secret: ${ENCRYPTION_SECRET:f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=}
 
 management:
   endpoints:
@@ -42,6 +58,14 @@ management:
       show-details: when-authorized
       probes:
         enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+    enabled: true
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://173.249.3.202:4318/v1/traces}
+      timeout: 5s
 
 social-discovery:
   social-domains:
@@ -227,8 +251,10 @@ techscraper:
 
 logging:
   level:
-    root: INFO
+    root: WARN
     solutions.pdroti: INFO
-    org.springframework.web: INFO
+    org.springframework: WARN
+    org.hibernate: ERROR
+    com.zaxxer.hikari: ERROR
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{HH:mm:ss} %-5level [%thread] - %msg%n"

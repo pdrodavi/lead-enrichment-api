@@ -121,26 +121,42 @@ Os campos são organizados em **sub-records** para melhor legibilidade: `dns`, `
 
 ---
 
-### 2. Listar Todos os Leads
+### 2. Listar Todos os Leads (Paginado)
 
 ```
 GET /api/v1/leads
 ```
 
-Retorna todos os leads ativos (exclui soft-deleted).
+Retorna leads ativos com **paginação** (default: page=0, size=20, sort=createdAt).
+
+#### Parâmetros de Query (opcionais)
+
+| Parâmetro | Tipo | Default | Descrição |
+|---|---|---|---|
+| `page` | int | 0 | Número da página (0-based) |
+| `size` | int | 20 | Itens por página |
+| `sort` | string | `createdAt` | Campo de ordenação (ex: `name,asc`) |
 
 #### Response (200 OK)
 
 ```json
-[
-  {
-    "id": 1,
-    "emailMasked": "con***@exemplo.com",
-    "name": "João Silva",
-    "domain": "exemplo.com",
-    "status": "ENRICHED"
+{
+  "content": [
+    {
+      "id": 1,
+      "emailMasked": "con***@exemplo.com",
+      "name": "João Silva",
+      "domain": "exemplo.com",
+      "status": "ENRICHED"
+    }
+  ],
+  "page": {
+    "size": 20,
+    "totalElements": 42,
+    "totalPages": 3,
+    "number": 0
   }
-]
+}
 ```
 
 ---
@@ -166,24 +182,40 @@ Retorna o lead completo (mesmo formato do enrich).
 
 ---
 
-### 4. Buscar Leads por Domínio
+### 4. Buscar Leads por Domínio (Paginado)
 
 ```
 GET /api/v1/leads/domain/{domain}
 ```
 
+#### Parâmetros de Query (opcionais)
+
+| Parâmetro | Tipo | Default | Descrição |
+|---|---|---|---|
+| `page` | int | 0 | Número da página (0-based) |
+| `size` | int | 20 | Itens por página |
+| `sort` | string | `createdAt` | Campo de ordenação (ex: `name,asc`) |
+
 #### Response (200 OK)
 
 ```json
-[
-  {
-    "id": 1,
-    "emailMasked": "con***@exemplo.com",
-    "name": "João Silva",
-    "domain": "exemplo.com",
-    "status": "ENRICHED"
+{
+  "content": [
+    {
+      "id": 1,
+      "emailMasked": "con***@exemplo.com",
+      "name": "João Silva",
+      "domain": "exemplo.com",
+      "status": "ENRICHED"
+    }
+  ],
+  "page": {
+    "size": 20,
+    "totalElements": 5,
+    "totalPages": 1,
+    "number": 0
   }
-]
+}
 ```
 
 #### Response (204 No Content)

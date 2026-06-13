@@ -22,6 +22,11 @@ public final class DataParser {
     public static final Pattern EMAIL_PATTERN =
             Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}");
 
+    /** Regex para extração de telefones brasileiros e internacionais. */
+    public static final Pattern PHONE_PATTERN = Pattern.compile(
+            "(?:(?:\\+\\d{1,3}\\s?)?(?:\\(\\d{2,3}\\)\\s?)?\\d{4,5}-?\\d{4})" +
+            "|(?:(?:\\+\\d{1,3}\\s?)?\\d{2,3}\\s?\\d{4,5}-?\\d{4})");
+
     /**
      * Extrai endereços de e-mail do snippet e título de um resultado de busca.
      * <p>
@@ -36,8 +41,29 @@ public final class DataParser {
         var matcher = EMAIL_PATTERN.matcher(snippet + " " + title);
         while (matcher.find()) {
             String foundEmail = matcher.group().toLowerCase();
-            if (!foundEmail.contains("example.com")) {
+            if (!foundEmail.contains("example.com") && !foundEmail.contains("@.*@")) {
                 emails.add(foundEmail);
+            }
+        }
+    }
+
+    /**
+     * Extrai números de telefone do snippet de texto.
+     *
+     * @param phones  lista onde os telefones encontrados serão adicionados
+     * @param snippet trecho de contexto do resultado
+     */
+    public static void extractPhones(List<String> phones, String snippet) {
+        if (snippet == null || snippet.isBlank()) return;
+        var matcher = PHONE_PATTERN.matcher(snippet);
+        while (matcher.find()) {
+            String phone = matcher.group().strip();
+            // Filtra falsos positivos (números muito curtos)
+            String digits = phone.replaceAll("\\D", "");
+            if (digits.length() >= 10 && digits.length() <= 15) {
+                if (!phones.contains(phone)) {
+                    phones.add(phone);
+                }
             }
         }
     }
