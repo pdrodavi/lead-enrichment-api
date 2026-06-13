@@ -53,7 +53,7 @@ public class OpenSerpSearch {
      * @param restTemplate RestTemplate configurado com timeouts (injetado pelo Spring)
      */
     public OpenSerpSearch(
-            @Value("${open-serp.api.url}") String baseUrl,
+            @Value("${open-serp.api.url:http://localhost:7000}") String baseUrl,
             @Qualifier("openSerpRestTemplate") RestTemplate restTemplate) {
         this.baseUrl = baseUrl.replace("/search", "").replaceAll("/$", "");
         this.restTemplate = restTemplate;
