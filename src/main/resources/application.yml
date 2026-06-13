@@ -25,7 +25,7 @@ spring:
 
 open-serp:
   api:
-    url: ${OPENSERP_API_URL}
+    url: ${OPENSERP_API_URL:http://localhost:7000}
 
 api:
   key: ${API_KEY}

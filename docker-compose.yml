@@ -41,7 +41,9 @@ services:
         DB_URL: ${DB_URL:-jdbc:postgresql://postgres-${ENV:-dev}:5432/postgres}
         DB_USERNAME: ${DB_USERNAME:-${PG_USER:-postgres}}
         DB_PASSWORD: ${DB_PASSWORD:-${PG_PASSWORD:-pgsqldev}}
-        SERPER_API_URL: ${SERPER_API_URL:-http://openserp-${ENV:-dev}:7000}
+        OPENSERP_API_URL: ${OPENSERP_API_URL:-http://openserp-${ENV:-dev}:7000}
+        API_KEY: ${API_KEY:?Configure API_KEY no .env}
+        ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?Configure ENCRYPTION_SECRET no .env}
         PORT: ${PORT:-8781}
     container_name: lead-enrichment-api-${ENV:-dev}
     ports:
@@ -50,7 +52,9 @@ services:
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres-${ENV:-dev}:5432/postgres}
       DB_USERNAME: ${DB_USERNAME:-${PG_USER:-postgres}}
       DB_PASSWORD: ${DB_PASSWORD:-${PG_PASSWORD:-pgsqldev}}
-      SERPER_API_URL: ${SERPER_API_URL:-http://openserp-${ENV:-dev}:7000}
+      OPENSERP_API_URL: ${OPENSERP_API_URL:-http://openserp-${ENV:-dev}:7000}
+      API_KEY: ${API_KEY:?Configure API_KEY no .env}
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?Configure ENCRYPTION_SECRET no .env}
       PORT: ${PORT:-8081}
     depends_on:
       postgres:
