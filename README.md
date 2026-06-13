@@ -13,6 +13,8 @@ API para enriquecimento de leads com dados públicos da internet. A partir de um
 | [🚀 Guia de Deploy](./docs/deployment.md) | Docker, variáveis de ambiente, produção e troubleshooting |
 | [🔒 Segurança e LGPD](./docs/security-lgpd.md) | Criptografia, mascaramento, autenticação, exclusão permanente e compliance |
 | [📜 OpenAPI Spec (YAML)](./docs/openapi.yaml) | Documentação OpenAPI 3.0 completa para geração de clientes |
+| [🔧 Referência Técnica](./docs/TECHNICAL_REFERENCE.md) | **NOVO** — Arquitetura detalhada, camadas, pipeline, performance, dependências |
+| [👋 Guia de Onboarding](./docs/ONBOARDING.md) | **NOVO** — Configuração do ambiente, fluxo de desenvolvimento, troubleshooting |
 ## Architecture Decision Records (ADRs)
 
 | ID | Título | Decisão Principal |
