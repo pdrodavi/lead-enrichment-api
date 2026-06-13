@@ -88,7 +88,11 @@ public record LeadResponse(
      *
      * @param lead entidade Lead persistida
      * @return LeadResponse com dados mascarados e agrupados
+     * @deprecated Use {@link #fromEntity(Lead, ObjectMapper)} com o ObjectMapper
+     *             injetado pelo Spring para respeitar as configurações do
+     *             {@code application.yml} (datas, timezone, etc.).
      */
+    @Deprecated(since = "1.0", forRemoval = true)
     public static LeadResponse fromEntity(Lead lead) {
         return fromEntity(lead, new ObjectMapper());
     }
@@ -117,7 +121,7 @@ public record LeadResponse(
                 lead.getDorkFindings(),
                 lead.getFoundDocuments() != null ? lead.getFoundDocuments() : List.of(),
                 lead.getDiscoveredUrls() != null ? lead.getDiscoveredUrls() : List.of(),
-                buildSerperResult(lead, mapper)
+                buildOpenSerpResult(lead, mapper)
         );
     }
 
@@ -135,12 +139,12 @@ public record LeadResponse(
     }
 
     /** Converte o JSON estruturado do OpenSERP em objeto tipado para o response. */
-    private static SerpSearchResult buildSerperResult(Lead lead, ObjectMapper mapper) {
-        if (lead.getSerperRawData() == null) return null;
+    private static SerpSearchResult buildOpenSerpResult(Lead lead, ObjectMapper mapper) {
+        if (lead.getOpenSerpRawData() == null) return null;
         try {
-            return mapper.readValue(lead.getSerperRawData(), SerpSearchResult.class);
+            return mapper.readValue(lead.getOpenSerpRawData(), SerpSearchResult.class);
         } catch (Exception e) {
-            log.error("Erro ao deserializar serperRawData para lead ID {}: {}", lead.getId(), e.getMessage());
+            log.error("Erro ao deserializar openSerpRawData para lead ID {}: {}", lead.getId(), e.getMessage());
             return empty(null);
         }
     }

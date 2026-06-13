@@ -34,7 +34,7 @@ public class OpenApiConfig {
             .servers(List.of(
                 new Server().url("https://api-lead-enrichment.pdroti.solutions")
                     .description("Produção (HTTPS)"),
-                new Server().url("http://localhost:8081")
+                new Server().url("http://localhost:${PORT:8081}")
                     .description("Desenvolvimento (HTTP local)")
             ))
             .addSecurityItem(new SecurityRequirement().addList("ApiKeyAuth"))

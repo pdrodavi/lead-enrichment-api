@@ -22,7 +22,7 @@ stateDiagram-v2
     ERROR --> [*]
 
     ENRICHED --> DELETED : DELETE /api/v1/leads/{id}
-    DELETED --> [*] : Expurgo após 365 dias
+    DELETED --> [*] : Hard delete (registro removido fisicamente)
 ```
 
 ## Diagrama de Fluxo — Enriquecimento Completo
@@ -43,14 +43,22 @@ flowchart TD
     DOMAIN_CHECK -->|"Sim"| FLUXO_COMPLETO
     DOMAIN_CHECK -->|"Não"| FLUXO_OPENSERP
 
-    subgraph FLUXO_COMPLETO["Fluxo Completo (com domínio)"]
+    subgraph FLUXO_COMPLETO["Fluxo Completo (com domínio) — DomainEnricher"]
         direction TB
         A1["1. DNS Validation (dnsjava)"] --> A2["2. Tech Scraper + Name Check (Jsoup)<br/>⚡ UMA requisição HTTP"]
         A2 --> A3["3. Social Discovery (Jsoup)"]
         A3 --> A4["4. Social Scraping (Jsoup)"]
         A4 --> A5["5. RDAP Query (HTTP)"]
-        A5 --> A6["6. OpenSERP Search (RestTemplate)"]
     end
+
+    subgraph FLUXO_OPENSERP_ENRICH["OpenSERP — OpenSerpEnricher<br/>(sempre executado)"]
+        direction TB
+        C1["1. fetchResults — busca páginas web"] --> C2["2. fetchDocuments — busca PDFs"]
+        C2 --> C3["3. processResults — filtra por nome<br/>extrai links, sociais, e-mails, menções"]
+        C3 --> C4["4. serializeResult — armazena como JSON"]
+    end
+
+    FLUXO_COMPLETO --> FLUXO_OPENSERP_ENRICH
 
     subgraph FLUXO_OPENSERP["Fluxo Reduzido (sem domínio)"]
         direction TB
@@ -59,7 +67,8 @@ flowchart TD
         B3 --> B4["4. Extrair e-mails expostos"]
     end
 
-    FLUXO_COMPLETO --> MERGE
+    FLUXO_COMPLETO -.->|somente domínio| MERGE
+    FLUXO_OPENSERP_ENRICH --> MERGE
     FLUXO_OPENSERP --> MERGE
 
     MERGE["Mesclar todos os dados coletados"] --> ENCRYPT["Criptografar e-mail (AES-128-GCM)"]
@@ -80,7 +89,6 @@ graph TB
         subgraph "config"
             AKF[ApiKeyFilter]
             EEC[EncryptedEmailConverter]
-            ES[EncryptionService]
             GEH[GlobalExceptionHandler]
             OAC[OpenApiConfig]
             APP[AppConfig]
@@ -110,25 +118,36 @@ graph TB
         end
         subgraph "service"
             LS[LeadService]
+            OSE[OpenSerpEnricher]
+            DE[DomainEnricher]
+            LDS[LeadDeletionService]
+            ES[EncryptionService]
             DNS[DnsValidationService]
             TSS[TechScraperService]
             SDS[SocialDiscoveryService]
             RS[RdapService]
             OSS[OpenSerpSearch]
+            SCR[ScrapeError]
         end
         subgraph "util"
             EU[EmailUtils]
+            DP[DataParser]
         end
     end
     
     LC --> LS
-    LS --> LREPO
-    LS --> DNS
-    LS --> TSS
-    LS --> SDS
-    LS --> RS
-    LS --> OSS
+    LC --> LDS
+    LS --> OSE
+    LS --> DE
+    LS --> LDS
+    LS --> DP
     LS --> EU
+    OSE --> OSS
+    OSE --> SDS
+    DE --> DNS
+    DE --> TSS
+    DE --> SDS
+    DE --> RS
     LREPO --> L
     
     classDef package fill:#e7f5ff,stroke:#1971c2,stroke-width:1px

@@ -5,6 +5,7 @@ import jakarta.persistence.Converter;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.stereotype.Component;
+import solutions.pdroti.lead.enrichment.api.service.EncryptionService;
 
 /**
  * Converter JPA que criptografa/descriptografa e-mails automaticamente
@@ -34,7 +35,8 @@ public class EncryptedEmailConverter implements AttributeConverter<String, Strin
     /**
      * Criptografa o e-mail antes de persistir no banco.
      * Formato: {@code ENC(<base64>)}.
-     * Em caso de erro, salva o texto plano (fallback seguro).
+     * Em caso de erro, lança exceção — não persiste e-mail sem criptografia
+     * para garantir conformidade com a LGPD.
      */
     @Override
     public String convertToDatabaseColumn(String plainText) {
@@ -61,7 +63,8 @@ public class EncryptedEmailConverter implements AttributeConverter<String, Strin
                 String encrypted = dbData.substring(ENC_PREFIX.length(), dbData.length() - ENC_SUFFIX.length());
                 return encryptionService.decrypt(encrypted);
             } catch (Exception e) {
-                return dbData;
+                log.error("Falha ao descriptografar e-mail: {}", e.getMessage());
+                throw new RuntimeException("Falha ao descriptografar e-mail", e);
             }
         }
         return dbData;

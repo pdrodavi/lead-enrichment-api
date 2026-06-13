@@ -25,48 +25,6 @@ public class TechScraperService {
 
     private final TechScraperProperties properties;
 
-    enum ScrapeError {
-        TIMEOUT("Timeout", (e, msg) ->
-                e instanceof java.net.SocketTimeoutException || msg.contains("timeout") || msg.contains("timed out")),
-        CLOUDFLARE("Cloudflare Protection", (e, msg) ->
-                msg.contains("cloudflare") || msg.contains("1020") || msg.contains("challenge")),
-        ACCESS_DENIED("Access Denied (403)", (e, msg) ->
-                msg.contains("403") || msg.contains("forbidden")),
-        SSL_HANDSHAKE("SSL Handshake Failed", (e, msg) ->
-                e instanceof javax.net.ssl.SSLException || msg.contains("ssl") || msg.contains("handshake")),
-        DOMAIN_NOT_FOUND("Domain Not Found", (e, msg) ->
-                msg.contains("unknowhost") || msg.contains("unknownhost") || msg.contains("no such host")),
-        PAGE_NOT_FOUND("Page Not Found (404)", (e, msg) ->
-                msg.contains("404") || msg.contains("not found"));
-
-        private final String description;
-        private final ErrorMatcher matcher;
-
-        ScrapeError(String description, ErrorMatcher matcher) {
-            this.description = description;
-            this.matcher = matcher;
-        }
-
-        String format() {
-            return "ScrapeError: " + description;
-        }
-
-        static String classify(Exception e, String message) {
-            String msg = message != null ? message.toLowerCase() : "";
-            for (var error : values()) {
-                if (error.matcher.matches(e, msg)) {
-                    return error.format();
-                }
-            }
-            return "ScrapeError: " + e.getClass().getSimpleName();
-        }
-
-        @FunctionalInterface
-        interface ErrorMatcher {
-            boolean matches(Exception e, String message);
-        }
-    }
-
     /**
      * Analisa o HTML do domínio e retorna lista de tecnologias detectadas.
      * Inclui fallback com descrição do erro em caso de falha de scrape.

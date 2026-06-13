@@ -31,7 +31,7 @@ Implementar criptografia **AES-128-GCM** com **IV aleatório de 12 bytes** para 
 
 | Componente | Arquivo | Responsabilidade |
 |---|---|---|
-| `EncryptionService` | `config/EncryptionService.java` | Algoritmo AES-128-GCM com IV aleatório |
+| `EncryptionService` | `service/EncryptionService.java` | Algoritmo AES-128-GCM com IV aleatório |
 | `EncryptedEmailConverter` | `config/EncryptedEmailConverter.java` | Converter automático JPA |
 
 ### Hash para Consulta
@@ -64,10 +64,14 @@ Banco:   "ENC(qK3mR8xP2vL9aB0cF5dG6hJ7kL8mN9oP0qR1sT2uV3wX4yZ5)"
   - IV aleatório por operação — mesmo e-mail gera ciphertext diferente
 
 - Negativas:
-  - Necessário gerenciamento seguro da chave `ENCRYPTION_SECRET` em produção
+  - Necessário gerenciamento seguro da chave `ENCRYPTION_SECRET` em produção (agora via `.env`)
   - Não é possível fazer `LIKE` ou buscas parciais no e-mail
   - Overhead computacional mínimo (~1ms por operação)
   - Rotação de chave requer reprocessamento de todos os registros
+
+### Refatoração: Fallback de Descriptografia
+
+Anteriormente, se a descriptografia falhasse em `convertToEntityAttribute()`, o método retornava o dado cifrado (`ENC(...)`) como se fosse texto plano — um fallback silencioso e inseguro. Após refatoração, o método agora **loga o erro e lança exceção**, garantindo que dados ilegíveis não sejam propagados para a aplicação.
 
 ## Referências
 

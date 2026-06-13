@@ -78,9 +78,13 @@ public class EmailUtils {
      */
     public static String hash(String email) {
         if (email == null || email.isBlank() || !email.contains("@")) return null;
-        MessageDigest md = DIGEST_CACHE.get();
-        md.reset();
-        byte[] digest = md.digest(email.strip().toLowerCase().getBytes(StandardCharsets.UTF_8));
-        return HexFormat.of().formatHex(digest);
+        try {
+            MessageDigest md = DIGEST_CACHE.get();
+            md.reset();
+            byte[] digest = md.digest(email.strip().toLowerCase().getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } finally {
+            DIGEST_CACHE.remove();
+        }
     }
 }

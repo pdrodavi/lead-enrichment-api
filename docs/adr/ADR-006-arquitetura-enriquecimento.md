@@ -24,25 +24,40 @@ LeadController
      ▼
 LeadService (Orquestrador)
      │
-     ├──▶ DnsValidationService    (dnsjava)
-     ├──▶ TechScraperService      (Jsoup + TechScraperProperties)
-     ├──▶ SocialDiscoveryService  (Jsoup + SocialDiscoveryProperties)
-     ├──▶ RdapService            (HTTP — RestTemplate)
-     └──▶ OpenSerpSearch         (RestTemplate — Spring)
-          ▲
-          │
-     AppConfig (RestTemplate Bean)
+     ├──▶ OpenSerpEnricher
+     │       ├── OpenSerpSearch       (RestTemplate — Spring)
+     │       └── SocialDiscoveryService (domínios sociais)
+     │
+     ├──▶ DomainEnricher
+     │       ├── DnsValidationService    (dnsjava)
+     │       ├── TechScraperService      (Jsoup + TechScraperProperties)
+     │       ├── SocialDiscoveryService  (Jsoup + SocialDiscoveryProperties)
+     │       └── RdapService            (HTTP — RestTemplate)
+     │
+     └──▶ LeadDeletionService
+     │       └── LeadRepository (hard/soft delete)
+     │
+     📦 DataParser (util — parsers estáticos: data, email, nome)
+     📦 EmailUtils (util — mascaramento e hash)
+     📦 AppConfig  (RestTemplate Beans: padrão + openSerpRestTemplate)
 ```
 
 ### Serviços e Responsabilidades
 
 | Serviço | Tecnologia | Dados Obtidos | Isolamento |
 |---|---|---|---|
-| `DnsValidationService` | dnsjava 3.6 | MX, A, AAAA, CNAME, TXT | try-catch próprio |
+| `OpenSerpEnricher` | — | Orquestra busca Google + processa resultados | `SerpProcessingContext` record |
+| `DomainEnricher` | — | Orquestra DNS + RDAP + scraping + sociais | `executeSafely` próprio |
+| `LeadDeletionService` | Spring Data JPA | Hard delete (1 query) e soft delete | `parseNumericId` |
+| `DnsValidationService` | dnsjava 3.6 | MX, A, AAAA, CNAME, TXT | try-catch via `executeSafely` |
 | `TechScraperService` | Jsoup 1.17 | ~90 assinaturas de tecnologia (externalizadas em YAML), e-mails expostos, menções de nome | try-catch próprio |
 | `SocialDiscoveryService` | Jsoup 1.17 | Links para 31 plataformas (externalizadas em YAML), perfis com título/descrição | try-catch próprio |
 | `RdapService` | RestTemplate | Identity Digital + Registro.br (CPF/CNPJ .com.br) | try-catch próprio |
-| `OpenSerpSearch` | RestTemplate | Google Search API self-hosted (até 30 resultados) | try-catch próprio |
+| `OpenSerpSearch` | RestTemplate | Google Search API self-hosted (até 15 resultados, timeout 30s) | try-catch próprio |
+
+### Camada de Configuração Externalizada
+
+Também foram criados utilitários estáticos (`DataParser`) e serviços auxiliares (`LeadDeletionService`) para manter o `LeadService` como orquestrador puro (~140 linhas).
 
 ### Camada de Configuração Externalizada
 
@@ -59,25 +74,27 @@ A refatoração introduziu classes `@ConfigurationProperties` para centralizar p
 ```
 LeadService.enrich()
      │
-     ├── Extrair domínio do e-mail
+     ├── Extrair domínio do e-mail (DataParser.extractDomainFromEmail)
      ├── Buscar lead existente por hash SHA-256
+     ├── DomainEnricher.resetEnrichmentData()
+     ├── OpenSerpEnricher.enrich()  ← SEMPRE executado
+     │     ├── fetchResults() + fetchDocuments()
+     │     └── processResults() com SerpProcessingContext
      ├── Se domínio válido:
-     │     ├── DnsValidationService.lookupDomain()
-     │     ├── TechScraperService.scrapeTechnologiesAndCheckName()  ← combinado
-     │     ├── SocialDiscoveryService.discoverSocialLinks()         ← inclui scraping de perfis
-     │     ├── RdapService.lookup()
-     │     └── OpenSerpSearch.searchPerson()
-     └── Se sem domínio:
-           └── OpenSerpSearch.searchPerson()
+     │     └── DomainEnricher.enrich()
+     │           ├── DnsValidationService.lookupDomain()
+     │           ├── TechScraperService.scrapeTechnologiesAndCheckName()
+     │           ├── SocialDiscoveryService.discoverSocialLinks()
+     │           └── RdapService.lookup()
      │
      ├── Converter Lead → LeadResponse (ObjectMapper injetado)
-     │     ├── DnsRecords  (sub-record com MX, A, AAAA, CNAME, TXT)
-     │     ├── DiscoveryData (sub-record com tecnologias, sociais, menções, URLs)
+     │     ├── DnsRecords  (sub-record)
+     │     ├── DiscoveryData (sub-record)
      │     └── RdapData (com rawJson: JsonNode)
      └── Persistir (LeadRepository.save())
 ```
 
-### Otimização: Chamada HTTP Combinada
+### Otimização 1: Chamada HTTP Combinada
 
 O `TechScraperService` unificou duas chamadas HTTP separadas em uma única requisição:
 
@@ -89,6 +106,35 @@ Antes:                        Agora:
 ```
 
 Isso reduziu o tempo de scraping em ~50% e eliminou uma conexão duplicada.
+
+### Otimização 2: Execução Paralela com CompletableFuture
+
+O `LeadService` foi otimizado para executar o OpenSERP e o DomainEnricher **em paralelo** via `CompletableFuture.allOf()`:
+
+```
+Antes (sequencial — ~soma dos tempos):          Agora (paralelo — ~max dos tempos):
+  OpenSerpEnricher.enrich()  ──┐                  OpenSerpEnricher.enrich()  ──┐
+                               ├── tempo total    DomainEnricher.enrich()    ──┤── allOf
+  DomainEnricher.enrich()   ──┘                                                │
+                                                                  ambas finalizam ─┘
+```
+
+Também dentro do `OpenSerpEnricher`, as duas chamadas HTTP (`fetchResults` + `fetchDocuments`) foram paralelizadas:
+
+```java
+CompletableFuture<JsonArray> resultsFuture = CompletableFuture.supplyAsync(() -> fetchResults(name));
+CompletableFuture<JsonArray> docsFuture = CompletableFuture.supplyAsync(() -> fetchDocuments(name));
+CompletableFuture.allOf(resultsFuture, docsFuture).join();
+```
+
+### Otimização 3: Timeouts Ajustados
+
+| Parâmetro | Antes | Depois | Motivo |
+|---|---|---|---|
+| OpenSERP read timeout | 90s | 30s | Limite superior realista para busca Google |
+| OpenSERP max results | 30 | 15 | Reduz tráfego e processamento |
+| Tomcat connection-timeout | 300s | 60s | Libera threads mais cedo |
+| Spring async request-timeout | 300s | 60s | Consistente com timeout HTTP |
 
 ### Isolamento de Falhas
 

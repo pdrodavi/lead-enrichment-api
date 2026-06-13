@@ -10,7 +10,7 @@ A aplicação precisa persistir leads enriquecidos com uma quantidade variável 
 
 - Armazenamento de campos com muitos-itens (listas de registros DNS, tecnologias, URLs)
 - Consulta por e-mail (hash SHA-256), nome, domínio e status
-- Suporte a soft delete com campo deletedAt
+- Suporte a exclusão física (hard delete via `deleteById`)
 - Capacidade de armazenar JSON bruto do RDAP e OpenSERP (campos TEXT)
 - Foreign Key e constraints de unicidade
 
@@ -48,6 +48,12 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     Optional<Lead> findByName(String name);                   // Busca por nome
     List<Lead> findByStatus(String status);                   // ACTIVE ou DELETED
     List<Lead> findByDomainAndStatus(String domain, String status); // Leads de um domínio
+}
+```
+
+### Nota sobre Exclusão
+
+Originalmente o modelo previa soft delete com `deletedAt`. Após refatoração, a exclusão é **física** (hard delete via `LeadDeletionService.hardDelete()`), que executa `deleteById` em 1 query. O campo `deletedAt` e o status `DELETED` permanecem na entidade para uso pelo método `softDelete()` legado, mas o endpoint padrão (`DELETE /api/v1/leads/{id}`) utiliza hard delete.
 }
 ```
 
