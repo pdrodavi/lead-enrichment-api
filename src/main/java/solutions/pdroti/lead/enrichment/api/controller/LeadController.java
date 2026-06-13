@@ -73,7 +73,7 @@ public class LeadController {
     }
 
     /**
-     * Lista todos os leads enriquecidos (exclui soft-deleted).
+     * Lista todos os leads com status ACTIVE.
      *
      * @return 200 com lista de leads ativos
      */
