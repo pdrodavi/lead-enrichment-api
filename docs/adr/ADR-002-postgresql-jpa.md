@@ -38,7 +38,7 @@ spring:
 | `@Column(length = 64, unique = true)` | Hash SHA-256 do e-mail |
 | `@Convert(converter = EncryptedEmailConverter.class)` | E-mail criptografado |
 | `@GeneratedValue(strategy = IDENTITY)` | ID auto-incremento |
-| `@PreUpdate` / `updatedAt` | Populado automaticamente em cada atualização |
+| `updatedAt` | Atualizado explicitamente no service (`lead.setUpdatedAt()`) |
 
 ### Consultas
 

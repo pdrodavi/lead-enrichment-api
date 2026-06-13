@@ -22,7 +22,7 @@ API para enriquecimento de leads com dados públicos da internet. A partir de um
 | [ADR-001](./docs/adr/ADR-001-stack-tecnologica.md) | Stack Tecnológica | **Java 21** + Spring Boot 3.3 + Maven + Lombok |
 | [ADR-002](./docs/adr/ADR-002-postgresql-jpa.md) | PostgreSQL + Spring Data JPA | PostgreSQL 16 com ddl-auto=update e @ElementCollection |
 | [ADR-003](./docs/adr/ADR-003-criptografia-pii-aes-gcm.md) | Criptografia de PII (LGPD) | AES-128-GCM via AttributeConverter + SHA-256 hash para consulta |
-| [ADR-004](./docs/adr/ADR-004-soft-delete-lgpd.md) | Exclusão para LGPD | Hard delete (exclusão física) |
+| [ADR-004](./docs/adr/ADR-004-soft-delete-lgpd.md) | Exclusão para LGPD | **Hard delete** via LeadDeletionService (1 query) |
 | [ADR-005](./docs/adr/ADR-005-api-key-autenticacao.md) | Autenticação via API Key | Servlet Filter com validação de header X-API-KEY |
 | [ADR-006](./docs/adr/ADR-006-arquitetura-enriquecimento.md) | Arquitetura de Enriquecimento | Orquestração centralizada com 12 serviços especializados e isolamento de falhas |
 | [ADR-007](./docs/adr/ADR-007-springdoc-openapi.md) | Documentação com SpringDoc/OpenAPI | Swagger UI auto-gerado com schema de segurança documentado |

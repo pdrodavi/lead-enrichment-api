@@ -45,32 +45,44 @@ Implementar um handler global de exceções com `@RestControllerAdvice`:
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER =
+            DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(
             MethodArgumentNotValidException ex) {
         var errors = ex.getBindingResult().getFieldErrors().stream()
                 .map(f -> f.getField() + ": " + f.getDefaultMessage())
                 .toList();
+        log.warn("Erro de validação: {}", errors);
         return ResponseEntity.badRequest().body(Map.of(
                 "error", "Validation Error",
                 "details", errors,
-                "timestamp", LocalDateTime.now().toString()
+                "timestamp", LocalDateTime.now().format(TIMESTAMP_FORMATTER)
         ));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(
             IllegalArgumentException ex) {
+        log.warn("Requisição inválida: {}", ex.getMessage());
         return ResponseEntity.badRequest().body(Map.of(
                 "error", "Bad Request",
                 "message", ex.getMessage(),
-                "timestamp", LocalDateTime.now().toString()
+                "timestamp", LocalDateTime.now().format(TIMESTAMP_FORMATTER)
         ));
     }
 
     @ExceptionHandler(IOException.class)
     public void handleClientDisconnect(IOException ex) {
-        log.warn("Cliente desconectou: {}", ex.getMessage());
+        String msg = ex.getMessage();
+        if (msg != null && (msg.contains("broken pipe")
+                || msg.contains("anulada") || msg.contains("abort")
+                || msg.contains("reset"))) {
+            log.warn("Cliente desconectou durante o processamento: {}", msg);
+        } else {
+            log.warn("Erro de I/O na resposta: {}", msg);
+        }
     }
 }
 ```
