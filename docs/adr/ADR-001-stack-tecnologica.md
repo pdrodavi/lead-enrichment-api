@@ -40,7 +40,7 @@ Adotar a seguinte stack tecnológica:
 ## Consequências
 
 - Positivas:
-  - Aplicação facilmente executável com `run.bat` ou `Ctrl+Shift+B` no VS Code
+  - Aplicação facilmente executável com `build-jdk21.bat`, `run.bat` ou `Ctrl+Shift+B` no VS Code
   - Documentação Swagger disponível em `/swagger-ui.html` sem configuração adicional
   - Health checks prontos para orquestração (Docker Compose, Kubernetes)
   - Código reduzido com Lombok
@@ -48,7 +48,7 @@ Adotar a seguinte stack tecnológica:
   - Segredos removidos do repositório (`.env.example` documenta variáveis obrigatórias)
 
 - Negativas:
-  - Java 17 como dependência de runtime obrigatória
+  - Java 21 como dependência de runtime obrigatória
   - Spring Boot 3.3.x exige Jakarta EE 10 (jakarta.* em vez de javax.*)
   - Lombok requer configuração na IDE para suporte completo
   - `.env` deve ser configurado antes da primeira execução

@@ -59,7 +59,7 @@ LeadService (Orquestrador — Virtual Threads)
 | `TechScraperService` | Jsoup 1.17 | ~90 assinaturas de tecnologia (externalizadas em YAML), e-mails expostos, menções de nome | try-catch próprio |
 | `SocialDiscoveryService` | Jsoup 1.17 | Links para 31 plataformas (externalizadas em YAML), perfis com título/descrição | try-catch próprio |
 | `RdapService` | RestTemplate | Identity Digital + Registro.br (CPF/CNPJ .com.br) | try-catch próprio |
-| `OpenSerpSearch` | RestTemplate | Google Search API self-hosted (até 15 resultados, timeout 30s) | try-catch próprio |
+| `OpenSerpSearch` | RestTemplate | Google Search API self-hosted (até 15 resultados, timeout 30s, proxy rotation) | try-catch próprio |
 
 ### Camada de Configuração Externalizada
 
@@ -137,7 +137,7 @@ CompletableFuture.allOf(resultsFuture, docsFuture).join();
 
 | Parâmetro | Antes | Depois | Motivo |
 |---|---|---|---|
-| OpenSERP read timeout | 90s | 30s | Limite superior realista para busca Google |
+| OpenSERP read timeout | 30s | 30s | Ajustado via AppConfig (socketTimeout) |
 | OpenSERP max results | 30 | 15 | Reduz tráfego e processamento |
 | Tomcat connection-timeout | 300s | 60s | Libera threads mais cedo |
 | Spring async request-timeout | 300s | 60s | Consistente com timeout HTTP |

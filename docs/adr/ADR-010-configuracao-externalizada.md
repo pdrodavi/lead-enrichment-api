@@ -48,8 +48,11 @@ techscraper:
     "React": "id=\"__next\""
     "Shopify": "Shopify.shop"
     "WordPress": "/wp-content/"
-    # ... ~90 assinaturas
+    # ... ~65 assinaturas
+    "script-detectors": ["facebook", "fbq", "hotjar"]
 ```
+
+> **Nota:** Desde a refatoração, o `TechScraperProperties` também inclui `script-detectors` (~20 detectores) e `meta-generators` (~30 geradores), todos externalizados no `application.yml`.
 
 #### SocialDiscoveryProperties
 
@@ -93,22 +96,19 @@ public class AppConfig {
     public RestTemplate openSerpRestTemplate(RestTemplateBuilder builder) {
         return builder
                 .setConnectTimeout(Duration.ofSeconds(10))
-                .setReadTimeout(Duration.ofSeconds(90))
+                .setReadTimeout(Duration.ofSeconds(30))
                 .build();
     }
 }
 ```
 
-> Foram configurados **dois** beans de `RestTemplate`: um padrão (timeouts 5s/20s) e um dedicado ao OpenSERP (timeouts 10s/90s), já que buscas no Google self-hosted podem levar mais de 30 segundos.
+> Foram configurados **dois** beans de `RestTemplate`: um padrão (timeouts 5s/20s) e um dedicado ao OpenSERP (timeouts 10s/30s), já que buscas no Google self-hosted podem levar mais de 30 segundos.
 
 ### Ativação
 
 ```java
 @SpringBootApplication
-@EnableConfigurationProperties({
-    TechScraperProperties.class,
-    SocialDiscoveryProperties.class
-})
+@ConfigurationPropertiesScan
 public class LeadEnrichmentApplication { ... }
 ```
 
