@@ -127,7 +127,7 @@ graph TB
             SDS[SocialDiscoveryService]
             RS[RdapService]
             OSS[OpenSerpSearch]
-            SCR[ScrapeError]
+            SERR[ScrapeError]
         end
         subgraph "util"
             EU[EmailUtils]
@@ -151,7 +151,7 @@ graph TB
     LREPO --> L
     
     classDef package fill:#e7f5ff,stroke:#1971c2,stroke-width:1px
-    class AKF,EEC,ES,GEH,OAC,APP,TCP,SDP,LC,LRQ,LRS,DR,RD,SSR,SRI,SPD,SCR,DNR,DCD,L,LREPO,LS,DNS,TSS,SDS,RS,OSS,EU package
+    class AKF,EEC,ES,GEH,OAC,APP,TCP,SDP,LC,LRQ,LRS,DR,RD,SSR,SRI,SPD,DNR,DCD,L,LREPO,LS,DNS,TSS,SDS,RS,OSS,SERR,EU package
 ```
 
 ## Diagrama de Atividades — Enriquecimento de Lead

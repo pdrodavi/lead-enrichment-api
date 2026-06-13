@@ -97,7 +97,6 @@ flowchart TD
     RESP_404_DEL --> END
 
     style FULL_FLOW fill:#ebfbee,stroke:#2f9e44,stroke-width:2px
-    style OPENSERP_ONLY fill:#fff5f5,stroke:#e03131,stroke-width:2px
 ```
 
 > **Nota:** Desde a refatoração, o `LeadService` passou a ser um orquestrador puro (~140 linhas) que delega para `OpenSerpEnricher` (busca Google), `DomainEnricher` (DNS + RDAP + scraping + sociais) e `LeadDeletionService` (hard delete em 1 query). O fluxo completo de tecnologias + verificação de nome é feito em **uma única requisição HTTP** via `scrapeTechnologiesAndCheckName()`. O `OpenSerpSearch` usa `RestTemplate` (gerenciado pelo Spring) em vez de `OkHttpClient` manual.

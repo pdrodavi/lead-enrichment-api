@@ -56,10 +56,6 @@ graph TB
     AKF -->|passa requisição| LC
     LC -->|chama| LS
 
-    TSS --> TCP
-    SDS --> SDP
-    OSS --> APP
-
     LS --> OSE
     LS --> DE
     LS --> LDS
@@ -73,6 +69,10 @@ graph TB
     DE --> SDS
     DE --> RS
 
+    TSS --> TCP
+    SDS --> SDP
+    OSS --> APP
+
     LS -->|persiste/consulta| LREPO
     LREPO --> EEC
     EEC --> DB
@@ -82,14 +82,6 @@ graph TB
     SDS -->|scraping| SOCIAL
     RS -->|HTTP RDAP| RDAP_API
     OSS -->|HTTP RestTemplate| OPENSERP
-
-    TSS --> TCP
-    SDS --> SDP
-    OSS --> APP
-
-    classDef config fill:#fff3bf,stroke:#f08c00,stroke-width:2px
-
-    class APP,TCP,SDP config
 
     %% Estilo
     classDef controller fill:#e7f5ff,stroke:#1971c2,stroke-width:2px
@@ -265,7 +257,7 @@ sequenceDiagram
     participant OSS as OpenSerpSearch
     participant DB as PostgreSQL
 
-    C->>AK: POST /api/v1/leads/enrich<br/>X-API-KEY + JSON {email, name, domain?}
+    C->>AK: POST /api/v1/leads/enrich (X-API-KEY + JSON {email, name, domain?})
     
     AK->>AK: Valida X-API-KEY
     alt Chave inválida
@@ -281,34 +273,33 @@ sequenceDiagram
 
     LC->>LS: enrich(email, domain, name)
 
-    LS->>LS: Extrai domínio do e-mail<br/>(se domain não informado)
+    LS->>LS: Extrai domínio do e-mail (se domain não informado)
     LS->>LS: Gera hash SHA-256(email)
     LS->>DB: findByEmailHash(hash)
     DB-->>LS: Lead existente (ou null)
 
     LS->>LS: Limpa dados de enrichment
 
-    critical ⚡ Execução Paralela (CompletableFuture.allOf)
-        par OpenSERP (sempre executado)
-            LS->>OSS: searchPerson(name, 15)
-            OSS-->>LS: JsonArray (resultados Google)
-            LS->>OSS: searchDocuments(name, 15)
-            OSS-->>LS: JsonArray (documentos)
-            LS->>LS: processResults + serializeResult
-        and Domínio (se disponível)
-            alt Domínio válido
-                LS->>DNS: lookupDomain(domain)
-                DNS-->>LS: DnsResult
-                LS->>TSS: scrapeTechnologiesAndCheckName(domain, name)
-                TSS-->>LS: tecnologias, menções
-                LS->>SDS: discoverSocialLinks(domain)
-                SDS-->>LS: socialLinks
-                LS->>RS: lookup(domain)
-                RS-->>LS: RdapData
-            else Sem domínio
-                note over LS: Nada — OpenSERP já executou
-            end
+    par Execucao Paralela (CompletableFuture.allOf)
+        LS->>OSS: searchPerson(name, 15)
+        OSS-->>LS: JsonArray (resultados Google)
+        LS->>OSS: searchDocuments(name, 15)
+        OSS-->>LS: JsonArray (documentos)
+        LS->>LS: processResults + serializeResult
+    and Dominio (se disponivel)
+        alt Dominio valido
+            LS->>DNS: lookupDomain(domain)
+            DNS-->>LS: DnsResult
+            LS->>TSS: scrapeTechnologiesAndCheckName(domain, name)
+            TSS-->>LS: tecnologias, mencoes
+            LS->>SDS: discoverSocialLinks(domain)
+            SDS-->>LS: socialLinks
+            LS->>RS: lookup(domain)
+            RS-->>LS: RdapData
+        else Sem dominio
+            note over LS: Apenas OpenSERP executado
         end
+    end
     LS-->>LC: Lead enriquecido
-    LC-->>C: 200 OK + List~LeadResponse~<br/>(email mascarado)
+    LC-->>C: Resultado com lista de leads e email mascarado
 ```
