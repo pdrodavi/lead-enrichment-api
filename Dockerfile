@@ -11,11 +11,11 @@ FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
 # Application configuration (with sensible defaults)
-ARG DB_URL=jdbc:postgresql://localhost:5433/postgres
-ARG DB_USERNAME=postgres
-ARG DB_PASSWORD=pgsqldev
-ARG API_KEY=b6vxAgj5KG5HPGCKlQQ7
-ARG ENCRYPTION_SECRET=f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=
+ARG DB_URL=
+ARG DB_USERNAME=
+ARG DB_PASSWORD=
+ARG API_KEY=
+ARG ENCRYPTION_SECRET=
 ARG PORT=8081
 
 ENV DB_URL=$DB_URL
