@@ -187,38 +187,49 @@ Os seguintes endpoints **não exigem** autenticação:
 
 ---
 
-## 6. Soft Delete (Histórico)
+## 6. Exclusão de Dados — Hard Delete (LGPD Art. 15 e 16)
 
 ### Direito ao Esquecimento
 
-A LGPD garante ao titular o direito de solicitar a exclusão de seus dados pessoais. A API implementa **soft delete**:
+A LGPD garante ao titular o direito de solicitar a exclusão de seus dados pessoais
+(Art. 18, VI). A API implementa **hard delete (exclusão física)** — o registro é
+removido permanentemente do banco de dados:
 
-```mermaid
-sequenceDiagram
-    participant C as Cliente
-    participant API as API
-    participant DB as PostgreSQL
+```
+DELETE /api/v1/leads/{id}
+       │
+       ▼
+LeadDeletionService.hardDelete(id)
+       │
+       ├── Sucesso → 200 OK + mensagem LGPD
+       └── EmptyResultDataAccessException → 404 Not Found
+```
 
-    C->>API: DELETE /api/v1/leads/{id}
-    API->>DB: UPDATE leads SET status='DELETED', deleted_at=NOW()
-    API-->>C: 200 + mensagem LGPD
-    Note over API,DB: Dados permanecem no banco<br/>mas não são retornados
+### Resposta de Sucesso (200)
+
+```json
+{
+  "message": "Lead excluído permanentemente do banco de dados",
+  "lgpdMessage": "Lead excluído com sucesso (LGPD — direito ao esquecimento)",
+  "id": "1"
+}
 ```
 
 ### Comportamento
 
-| Operação | Comportamento após soft delete |
+| Operação | Comportamento após hard delete |
 |---|---|
-| `GET /leads` | Não retorna leads DELETED |
+| `GET /leads` | Não retorna leads excluídos |
 | `GET /leads/{id}` | Retorna 404 |
-| `GET /leads/domain/{domain}` | Não retorna leads DELETED |
+| `GET /leads/domain/{domain}` | Não retorna leads excluídos |
 | `PUT /leads/{id}` | Retorna 404 |
+| `DELETE /leads/{id}` | Retorna 404 (já excluído) |
 
-### Retenção de Dados
+### Histórico: Soft Delete
 
-- Dados soft-deleted são mantidos por **365 dias**
-- Após esse período, um job futuro deverá realizar o expurgo físico
-- Durante a retenção, os dados permanecem criptografados
+Originalmente a API implementava soft delete (exclusão lógica com status `DELETED`
+e campo `deletedAt`). O método `LeadDeletionService.softDelete()` ainda existe
+para referência, mas o endpoint padrão utiliza hard delete desde a refatoração.
 
 ---
 
