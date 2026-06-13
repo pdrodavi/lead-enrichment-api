@@ -34,6 +34,9 @@ public class EncryptionService {
     /** Tamanho da chave AES em bytes (128 bits). */
     private static final int KEY_SIZE_BYTES = 16;
 
+    /** SecureRandom reutilizável — evitar recriação a cada encrypt(). */
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private final SecretKey secretKey;
 
     /**
@@ -60,8 +63,7 @@ public class EncryptionService {
     public String encrypt(String plainText) {
         try {
             byte[] iv = new byte[IV_LENGTH];
-            SecureRandom random = new SecureRandom();
-            random.nextBytes(iv);
+            SECURE_RANDOM.nextBytes(iv);
 
             Cipher cipher = Cipher.getInstance(ALGORITHM);
             cipher.init(Cipher.ENCRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_LENGTH, iv));

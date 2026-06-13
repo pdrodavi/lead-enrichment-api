@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -17,6 +18,41 @@ import java.util.regex.Pattern;
 public final class DataParser {
 
     private DataParser() { throw new UnsupportedOperationException("Utility class"); }
+
+    /**
+     * Conjunto de provedores de e-mail pessoais/conhecidos onde o
+     * enriquecimento de domínio (DNS, RDAP, TechScraper) não agrega valor.
+     * <p>
+     * Quando o lead usa um destes domínios, o pipeline pula o
+     * {@code DomainEnricherService} e executa apenas o {@code OpenSerpEnricherService}
+     * (busca pelo nome no Google).
+     */
+    public static final Set<String> COMMON_EMAIL_PROVIDERS = Set.of(
+            // Brasil / Portugal
+            "bol.com.br", "uol.com.br", "terra.com.br", "ig.com.br", "globo.com",
+            "r7.com", "zipmail.com.br", "click21.com.br", "pop.com.br",
+            "sapo.pt", "clix.pt", "mail.pt",
+            // Gmail / Google
+            "gmail.com", "googlemail.com", "google.com",
+            // Microsoft
+            "outlook.com", "outlook.com.br", "hotmail.com", "hotmail.com.br",
+            "live.com", "live.com.br", "msn.com",
+            // Yahoo
+            "yahoo.com", "yahoo.com.br", "ymail.com", "rocketmail.com",
+            // Apple / iCloud
+            "icloud.com", "me.com", "mac.com",
+            // Proton
+            "protonmail.com", "proton.me", "pm.me",
+            // Outros internacionais
+            "aol.com", "mail.com", "inbox.com", "gmx.com", "gmx.net",
+            "yandex.com", "yandex.ru", "mail.ru", "bk.ru", "list.ru",
+            "zoho.com", "fastmail.com", "fastmail.fm", "tutanota.com",
+            "tutamail.com", "keemail.me", "disroot.org", "posteo.net",
+            "runbox.com", "sohu.com", "126.com", "163.com", "qq.com",
+            "rediffmail.com", "libero.it", "t-online.de", "web.de",
+            "freenet.de", "orange.fr", "free.fr", "laposte.net",
+            "wanadoo.fr", "skynet.be", "telenet.be"
+    );
 
     /** Regex para extração de e-mails de textos (snippets, títulos). */
     public static final Pattern EMAIL_PATTERN =
@@ -119,6 +155,23 @@ public final class DataParser {
             throw new IllegalArgumentException("Email inválido: " + email);
         }
         return email.substring(email.indexOf("@") + 1);
+    }
+
+    /**
+     * Verifica se o domínio pertence a um provedor de e-mail pessoal/conhecido.
+     * <p>
+     * Domínios pessoais não têm valor para enriquecimento de domínio
+     * (DNS, RDAP, TechScraper), pois as informações seriam do provedor,
+     * não do lead.
+     *
+     * @param domain domínio a verificar (ex: "gmail.com", "empresa.com.br")
+     * @return {@code true} se for um domínio de provedor pessoal conhecido
+     */
+    public static boolean isPersonalEmailDomain(String domain) {
+        if (domain == null || domain.isBlank()) return false;
+        String lower = domain.toLowerCase().strip();
+        // Verifica exato e também subdomínios (ex: "mail.google.com" não é pessoal)
+        return COMMON_EMAIL_PROVIDERS.contains(lower);
     }
 
     /**

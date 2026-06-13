@@ -9,6 +9,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import org.hibernate.annotations.BatchSize;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -29,6 +31,7 @@ import java.util.List;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
+@BatchSize(size = 10)
 public class Lead implements Serializable {
 
     // === Identidade ===
@@ -151,6 +154,10 @@ public class Lead implements Serializable {
     private LocalDateTime createdAt;
     private LocalDateTime deletedAt;
     private LocalDateTime updatedAt;
+
+    /** Versionamento para lock otimista (evita race conditions em reenriquecimento). */
+    @Version
+    private Long version;
 
     /** Retorna true se o lead já foi persistido (id != null). */
     public boolean isPresent() {

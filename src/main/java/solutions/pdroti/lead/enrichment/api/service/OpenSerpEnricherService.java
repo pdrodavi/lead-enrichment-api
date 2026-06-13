@@ -29,16 +29,16 @@ import java.util.stream.Stream;
  */
 @Slf4j
 @Service
-public class OpenSerpEnricher {
+public class OpenSerpEnricherService {
 
     private static final int OPENSERP_MAX_RESULTS = 15;
 
-    private final OpenSerpSearch openSerpSearch;
+    private final OpenSerpSearchService openSerpSearch;
     private final SocialDiscoveryService socialDiscoveryService;
     private final ObjectMapper objectMapper;
     private final Executor enrichmentExecutor;
 
-    public OpenSerpEnricher(OpenSerpSearch openSerpSearch,
+    public OpenSerpEnricherService(OpenSerpSearchService openSerpSearch,
                              SocialDiscoveryService socialDiscoveryService,
                              ObjectMapper objectMapper,
                              @Qualifier("enrichmentExecutor") Executor enrichmentExecutor) {
@@ -161,15 +161,13 @@ public class OpenSerpEnricher {
 
             if (link == null) continue;
 
-            // Filtra apenas resultados que mencionam o nome
+            // Filtra apenas resultados que mencionam o nome exato
+            // (aplicado em TODAS as fontes — social, profissional e contato
+            //  também precisam referenciar o nome para serem relevantes)
             boolean nameInSnippet = DataParser.nameMatchesExactly(snippet, name);
             boolean nameInTitle = DataParser.nameMatchesExactly(title, name);
-            // Na busca social/profissional já filtrada, aceita mesmo sem nome exato
-            boolean isTargetedSearch = "Redes Sociais".equals(source)
-                    || "Profissional".equals(source)
-                    || "Contato".equals(source);
 
-            if (!nameInSnippet && !nameInTitle && !isTargetedSearch) {
+            if (!nameInSnippet && !nameInTitle) {
                 continue;
             }
 

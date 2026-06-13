@@ -14,20 +14,22 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Orquestrador do pipeline de enriquecimento de leads.
  * <p>
  * Coordena as fontes de dados delegando para serviços especializados:
  * <ul>
- *   <li>{@link OpenSerpEnricher} — busca no Google pelo nome da pessoa</li>
- *   <li>{@link DomainEnricher} — DNS, RDAP, scraping, redes sociais</li>
+ *   <li>{@link OpenSerpEnricherService} — busca no Google pelo nome da pessoa</li>
+ *   <li>{@link DomainEnricherService} — DNS, RDAP, scraping, redes sociais</li>
  *   <li>{@link LeadDeletionService} — exclusão de registros</li>
  * </ul>
  * <p>
@@ -41,8 +43,9 @@ import org.springframework.data.domain.Pageable;
 public class LeadService {
 
     private final LeadRepository leadRepository;
-    private final OpenSerpEnricher openSerpEnricher;
-    private final DomainEnricher domainEnricher;
+    private final OpenSerpEnricherService openSerpEnricherService;
+    private final DomainEnricherService domainEnricher;
+    private final TransactionTemplate transactionTemplate;
 
     @Qualifier("enrichmentExecutor")
     private final Executor enrichmentExecutor;
@@ -64,14 +67,11 @@ public class LeadService {
      * @param name   nome da pessoa (obrigatório)
      * @return {@link EnrichResult} com lead persistido + leads do mesmo domínio
      */
-    @Transactional
     public EnrichResult enrichWithDomainLeads(String email, String domain, String name) {
         Lead enriched = enrich(email, domain, name);
         String d = enriched.getDomain();
         List<Lead> domainLeads = (d != null && !d.isBlank())
-                ? leadRepository.findByStatus(DEFAULT_STATUS).stream()
-                        .filter(l -> d.equals(l.getDomain()))
-                        .toList()
+                ? leadRepository.findByDomainAndStatus(d, DEFAULT_STATUS)
                 : List.of();
         return new EnrichResult(enriched, domainLeads);
     }
@@ -84,7 +84,6 @@ public class LeadService {
      * @param name   nome da pessoa (obrigatório)
      * @return lead persistido com dados enriquecidos
      */
-    @Transactional
     public Lead enrich(String email, String domain, String name) {
         log.info("Enriquecendo lead: nome={} email={} domain={}", name, EmailUtils.mask(email), domain);
 
@@ -149,7 +148,6 @@ public class LeadService {
      * @return lead atualizado e reenriquecido
      * @throws IllegalArgumentException se o ID não existir
      */
-    @Transactional
     public Lead update(String id, String email, String domain, String name) {
         Lead lead = findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Lead não encontrado: " + id));
@@ -166,7 +164,7 @@ public class LeadService {
 
     /**
      * Executa o pipeline completo de enrichment delegando para
-     * {@link OpenSerpEnricher} e {@link DomainEnricher}, e persiste o resultado.
+     * {@link OpenSerpEnricherService} e {@link DomainEnricherService}, e persiste o resultado.
      */
     private Lead performFullEnrichment(Lead existing, String email, String domain, String name) {
         Lead lead = existing != null ? existing : createNewLead(email, domain, name);
@@ -185,18 +183,28 @@ public class LeadService {
         // OpenSERP e domínio executam em PARALELO via CompletableFuture
         // com pool de threads dedicado (enrichmentExecutor)
         CompletableFuture<Void> openSerpFuture = CompletableFuture.runAsync(() ->
-                openSerpEnricher.enrich(lead, name), enrichmentExecutor);
+                openSerpEnricherService.enrich(lead, name), enrichmentExecutor);
 
-        CompletableFuture<Void> domainFuture = StringUtils.hasText(domain)
+        // Para domínios de provedores pessoais (gmail.com, outlook.com, etc.),
+        // o enriquecimento de domínio é pulado — não faz sentido consultar
+        // DNS/RDAP/TechScraper do provedor, pois os dados seriam dele, não do lead.
+        boolean isPersonalDomain = DataParser.isPersonalEmailDomain(domain);
+        CompletableFuture<Void> domainFuture = StringUtils.hasText(domain) && !isPersonalDomain
                 ? CompletableFuture.runAsync(() -> domainEnricher.enrich(lead, domain, name), enrichmentExecutor)
                 : CompletableFuture.completedFuture(null);
+        if (isPersonalDomain) {
+            log.info("Domínio pessoal '{}' — pulando DomainEnricherService", domain);
+        }
 
-        // Aguarda ambos finalizarem
-        CompletableFuture.allOf(openSerpFuture, domainFuture).join();
+        // Aguarda ambos finalizarem com timeout de 2 minutos
+        CompletableFuture.allOf(openSerpFuture, domainFuture)
+                .orTimeout(2, TimeUnit.MINUTES)
+                .join();
 
         lead.setUpdatedAt(LocalDateTime.now());
 
-        Lead savedLead = leadRepository.save(lead);
+        // Transação curta — apenas o save, sem HTTP calls
+        Lead savedLead = transactionTemplate.execute(status -> leadRepository.save(lead));
         log.info("Lead enriquecido: {}", logId);
         return savedLead;
     }

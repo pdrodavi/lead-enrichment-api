@@ -1,5 +1,6 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -23,6 +24,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import solutions.pdroti.lead.enrichment.api.config.OpenSerpProxyProperties;
 import solutions.pdroti.lead.enrichment.api.config.OpenSerpProxyProperties.EndpointConfig;
+import solutions.pdroti.lead.enrichment.api.util.ContentTracker;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -32,7 +34,7 @@ import java.nio.charset.StandardCharsets;
  * <p>
  * Realiza buscas no Google de forma programática através de uma
  * instância self-hosted do OpenSERP. Executado pelo
- * {@link OpenSerpEnricher} durante o pipeline de enriquecimento.
+ * {@link OpenSerpEnricherService} durante o pipeline de enriquecimento.
  * <p>
  * Endpoint consultado:
  * <pre>
@@ -53,7 +55,7 @@ import java.nio.charset.StandardCharsets;
  */
 @Slf4j
 @Service
-public class OpenSerpSearch {
+public class OpenSerpSearchService {
 
     /** Limite padrão de resultados por busca. */
     private static final int DEFAULT_LIMIT = 30;
@@ -75,6 +77,8 @@ public class OpenSerpSearch {
 
     private final RestTemplate restTemplate;
     private final Gson gson;
+    private final Cache<String, JsonArray> openSerpCache;
+    private final ContentTracker contentTracker;
 
     /** Lista de endpoints configurados (com proxy opcional). */
     private final List<EndpointEntry> endpoints = new CopyOnWriteArrayList<>();
@@ -98,11 +102,15 @@ public class OpenSerpSearch {
      * Construtor que inicializa o RestTemplate e a lista de endpoints.
      * Se {@code endpoints} estiver vazia, usa o {@code api.url} como fallback.
      */
-    public OpenSerpSearch(
+    public OpenSerpSearchService(
             OpenSerpProxyProperties proxyProperties,
-            @Qualifier("openSerpRestTemplate") RestTemplate restTemplate) {
+            @Qualifier("openSerpRestTemplate") RestTemplate restTemplate,
+            Cache<String, JsonArray> openSerpCache,
+            Cache<String, String> openSerpHashCache) {
         this.restTemplate = restTemplate;
         this.gson = new GsonBuilder().setStrictness(Strictness.LENIENT).create();
+        this.openSerpCache = openSerpCache;
+        this.contentTracker = new ContentTracker(openSerpHashCache, "OpenSERP");
 
         // Carrega endpoints da configuração
         List<EndpointConfig> configured = proxyProperties.getEndpoints();
@@ -156,6 +164,13 @@ public class OpenSerpSearch {
             return new JsonArray();
         }
 
+        String cacheKey = "person:" + name.toLowerCase().strip() + ":" + limit;
+        JsonArray cached = openSerpCache.getIfPresent(cacheKey);
+        if (cached != null) {
+            log.debug("OpenSERP cache hit para '{}' ({} resultados)", name, cached.size());
+            return cached;
+        }
+
         enforceRateLimit();
 
         String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8);
@@ -170,7 +185,13 @@ public class OpenSerpSearch {
         } else {
             log.debug("OpenSERP: sem resultados para '{}' (limit={})", name, limit);
         }
-        return results != null ? results : new JsonArray();
+        JsonArray finalResults = results != null ? results : new JsonArray();
+
+        // Detecta se o conteúdo mudou em relação ao cache anterior (hash SHA-256)
+        contentTracker.trackContentChange(cacheKey, finalResults.toString());
+
+        openSerpCache.put(cacheKey, finalResults);
+        return finalResults;
     }
 
     /**
@@ -448,11 +469,25 @@ public class OpenSerpSearch {
             log.debug("OpenSERP circuit breaker aberto — pulando busca '{}'", label);
             return new JsonArray();
         }
+
+        String cacheKey = "search:" + query.toLowerCase().strip() + ":" + limit;
+        JsonArray cached = openSerpCache.getIfPresent(cacheKey);
+        if (cached != null) {
+            log.debug("OpenSERP cache hit para '{}' ({} resultados)", label, cached.size());
+            return cached;
+        }
+
         enforceRateLimit();
         String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
         EndpointEntry ep = nextEndpoint();
         JsonArray results = fetchWithRetry(ep, encodedQuery, label, 0, limit);
-        return results != null ? results : new JsonArray();
+        JsonArray finalResults = results != null ? results : new JsonArray();
+
+        // Detecta se o conteúdo mudou em relação ao cache anterior
+        contentTracker.trackContentChange(cacheKey, finalResults.toString());
+
+        openSerpCache.put(cacheKey, finalResults);
+        return finalResults;
     }
 
     /**
@@ -466,6 +501,13 @@ public class OpenSerpSearch {
         if (isCircuitBreakerOpen()) {
             log.debug("OpenSERP circuit breaker aberto — pulando busca de documentos para '{}'", name);
             return new JsonArray();
+        }
+
+        String cacheKey = "docs:" + name.toLowerCase().strip() + ":" + limit;
+        JsonArray cached = openSerpCache.getIfPresent(cacheKey);
+        if (cached != null) {
+            log.debug("OpenSERP cache hit para docs '{}' ({} resultados)", name, cached.size());
+            return cached;
         }
 
         JsonArray all = new JsonArray();
@@ -486,6 +528,11 @@ public class OpenSerpSearch {
         }
 
         log.debug("OpenSERP documentos: {} resultados no total para '{}'", all.size(), name);
+
+        // Detecta se o conteúdo mudou em relação ao cache anterior
+        contentTracker.trackContentChange(cacheKey, all.toString());
+
+        openSerpCache.put(cacheKey, all);
         return all;
     }
 

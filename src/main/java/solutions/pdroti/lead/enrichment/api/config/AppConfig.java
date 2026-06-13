@@ -7,13 +7,17 @@ import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.util.Timeout;
+import java.net.http.HttpClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
+import com.google.gson.JsonArray;
 import solutions.pdroti.lead.enrichment.api.dto.DnsResult;
+import solutions.pdroti.lead.enrichment.api.dto.RdapData;
+import solutions.pdroti.lead.enrichment.api.dto.SocialProfileData;
 
 import java.time.Duration;
 import java.util.List;
@@ -75,6 +79,20 @@ public class AppConfig {
     }
 
     /**
+    /**
+     * HttpClient compartilhado com connection pooling.
+     * Reutilizado por RdapService, TechScraperService e SocialDiscoveryService
+     * para evitar criar uma nova conexão TCP a cada requisição.
+     */
+    @Bean
+    public HttpClient sharedHttpClient() {
+        return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .executor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor())
+                .build();
+    }
+
+    /**
      * RestTemplate dedicado ao OpenSERP com timeouts estendidos,
      * já que buscas no Google self-hosted podem levar até 30 segundos.
      */
@@ -131,6 +149,61 @@ public class AppConfig {
         return Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofHours(1))
                 .maximumSize(10_000)
+                .recordStats()
+                .build();
+    }
+
+    /**
+     * Cache de resultados RDAP por domínio. TTL de 1 hora —
+     * dados de registro de domínio mudam raramente.
+     */
+    @Bean
+    public Cache<String, RdapData> rdapCache() {
+        return Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofHours(1))
+                .maximumSize(10_000)
+                .recordStats()
+                .build();
+    }
+
+    /**
+     * Cache de resultados OpenSERP por query. TTL de 30 minutos —
+     * resultados de busca no Google podem mudar com frequência,
+     * mas um cache de 30min evita buscas repetidas em lote.
+     */
+    @Bean
+    public Cache<String, JsonArray> openSerpCache() {
+        return Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(30))
+                .maximumSize(5_000)
+                .recordStats()
+                .build();
+    }
+
+    /**
+     * Cache de hash SHA-256 para detectar mudanças em resultados
+     * do OpenSERP. TTL longo (2h) — usado pelo {@code ContentTracker}
+     * para comparar o fingerprint do novo resultado com o anterior
+     * quando o cache de dados expira.
+     */
+    @Bean
+    public Cache<String, String> openSerpHashCache() {
+        return Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofHours(2))
+                .maximumSize(5_000)
+                .recordStats()
+                .build();
+    }
+
+    /**
+     * Cache de perfis sociais scrapy por URL. TTL de 1 hora —
+     * perfis de redes sociais mudam com pouca frequência.
+     */
+    @Bean
+    public Cache<String, SocialProfileData> socialProfileCache() {
+        return Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofHours(1))
+                .maximumSize(5_000)
                 .recordStats()
                 .build();
     }

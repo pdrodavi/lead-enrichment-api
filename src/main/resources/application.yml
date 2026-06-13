@@ -253,8 +253,23 @@ logging:
   level:
     root: WARN
     solutions.pdroti: INFO
+    # Cache Caffeine hits/misses (muito ruído — desligado)
+    com.github.benmanes.caffeine.cache: WARN
+    # DNS lookups e registros TXT (só erro)
+    org.xbill.DNS: ERROR
+    # JSoup HTML parsing (só erro)
+    org.jsoup: ERROR
+    # Apache HttpClient connection pool (só erro)
+    org.apache.hc.client5.http: ERROR
     org.springframework: WARN
+    # Spring Web (só erro, desliga tracing verbose)
+    org.springframework.web: ERROR
+    org.springframework.boot.actuate: WARN
+    org.springframework.security: WARN
     org.hibernate: ERROR
+    org.hibernate.SQL: WARN
     com.zaxxer.hikari: ERROR
+    # Otel tracing (muito ruído)
+    io.opentelemetry: WARN
   pattern:
-    console: "%d{HH:mm:ss} %-5level [%thread] - %msg%n"
+    console: "%d{HH:mm:ss} %-5level - %msg%n"

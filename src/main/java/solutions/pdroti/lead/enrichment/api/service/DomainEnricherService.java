@@ -24,7 +24,7 @@ import java.util.function.Supplier;
  */
 @Slf4j
 @Service
-public class DomainEnricher {
+public class DomainEnricherService {
 
     private final DnsValidationService dnsValidationService;
     private final TechScraperService techScraperService;
@@ -32,7 +32,7 @@ public class DomainEnricher {
     private final RdapService rdapService;
     private final Cache<String, List<String>> techCache;
 
-    public DomainEnricher(DnsValidationService dnsValidationService,
+    public DomainEnricherService(DnsValidationService dnsValidationService,
                            TechScraperService techScraperService,
                            SocialDiscoveryService socialDiscoveryService,
                            RdapService rdapService,

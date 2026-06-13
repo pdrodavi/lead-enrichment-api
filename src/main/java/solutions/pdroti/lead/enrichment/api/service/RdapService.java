@@ -2,9 +2,10 @@ package solutions.pdroti.lead.enrichment.api.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
+import com.github.benmanes.caffeine.cache.Cache;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import java.net.http.HttpClient;
 import solutions.pdroti.lead.enrichment.api.dto.RdapData;
 
 import java.net.URI;
@@ -26,14 +27,30 @@ import java.util.List;
  * </ul>
  * <p>
  * O RDAP é o sucessor moderno do WHOIS, com respostas em JSON estruturado.
+ * <p>
+ * Otimizações:
+ * <ul>
+ *   <li>Cache Caffeine — resultados são cacheados por 1 hora</li>
+ * </ul>
  *
  * @see <a href="https://www.icann.org/rdap">ICANN RDAP</a>
  * @see <a href="https://rdap.registro.br">Registro.br RDAP</a>
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class RdapService {
+
+    private final ObjectMapper objectMapper;
+    private final Cache<String, RdapData> rdapCache;
+    private final HttpClient httpClient;
+
+    public RdapService(ObjectMapper objectMapper,
+                        Cache<String, RdapData> rdapCache,
+                        java.net.http.HttpClient sharedHttpClient) {
+        this.objectMapper = objectMapper;
+        this.rdapCache = rdapCache;
+        this.httpClient = sharedHttpClient;
+    }
 
     /** URL base da API RDAP da Identity Digital. */
     private static final String IDENTITY_DIGITAL_URL = "https://rdap.identitydigital.services/rdap/domain/";
@@ -46,8 +63,6 @@ public class RdapService {
 
     /** User-Agent para as requisições. */
     private static final String USER_AGENT = "LeadEnrichmentAPI/1.0";
-
-    private final ObjectMapper objectMapper;
 
     /**
      * Consulta os dados de registro do domínio via RDAP.
@@ -69,6 +84,13 @@ public class RdapService {
 
         String lowerDomain = domain.toLowerCase().strip();
 
+        // Tenta cache primeiro
+        RdapData cached = rdapCache.getIfPresent(lowerDomain);
+        if (cached != null) {
+            log.debug("RDAP cache hit para {}", domain);
+            return cached;
+        }
+
         // Identity Digital — funciona para a maioria dos TLDs genéricos
         RdapData identityResult = queryIdentityDigital(lowerDomain);
         RdapData result = identityResult.rawJson() != null ? identityResult : RdapData.empty();
@@ -82,6 +104,8 @@ public class RdapService {
             }
         }
 
+        // Armazena no cache (mesmo vazio, para evitar re-consultar domínios sem RDAP)
+        rdapCache.put(lowerDomain, result);
         return result;
     }
 
@@ -112,9 +136,6 @@ public class RdapService {
     /** Faz a requisição HTTP GET e retorna o body como string. */
     private String fetchJson(String url) {
         try {
-            var client = HttpClient.newBuilder()
-                    .connectTimeout(TIMEOUT)
-                    .build();
             var request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .header("User-Agent", USER_AGENT)
@@ -122,7 +143,7 @@ public class RdapService {
                     .timeout(TIMEOUT)
                     .GET()
                     .build();
-            var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 return response.body();
             }
