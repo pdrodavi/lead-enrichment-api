@@ -12,6 +12,7 @@ import solutions.pdroti.lead.enrichment.api.util.EmailUtils;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,9 @@ import lombok.extern.slf4j.Slf4j;
  *   <li>{@link DomainEnricher} — DNS, RDAP, scraping, redes sociais</li>
  *   <li>{@link LeadDeletionService} — exclusão de registros</li>
  * </ul>
+ * <p>
+ * Otimização: OpenSERP e Domain enrichment executam em paralelo via
+ * {@link CompletableFuture}, reduzindo o tempo total pela duração do mais lento.
  */
 @Service
 @Slf4j
@@ -139,13 +143,16 @@ public class LeadService {
 
         domainEnricher.resetEnrichmentData(lead);
 
-        // 1. OpenSERP — SEMPRE executado (busca pelo nome no Google)
-        openSerpEnricher.enrich(lead, name);
+        // OpenSERP e domínio executam em PARALELO via CompletableFuture
+        CompletableFuture<Void> openSerpFuture = CompletableFuture.runAsync(() ->
+                openSerpEnricher.enrich(lead, name));
 
-        // 2. Domínio — executado apenas se disponível
-        if (StringUtils.hasText(domain)) {
-            domainEnricher.enrich(lead, domain, name);
-        }
+        CompletableFuture<Void> domainFuture = StringUtils.hasText(domain)
+                ? CompletableFuture.runAsync(() -> domainEnricher.enrich(lead, domain, name))
+                : CompletableFuture.completedFuture(null);
+
+        // Aguarda ambos finalizarem
+        CompletableFuture.allOf(openSerpFuture, domainFuture).join();
 
         lead.setUpdatedAt(LocalDateTime.now());
 

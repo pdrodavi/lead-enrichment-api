@@ -1,0 +1,569 @@
+openapi: "3.0.3"
+info:
+  title: "Lead Enrichment API"
+  description: |
+    API robusta para validação de leads e enriquecimento de dados
+    com informações públicas da internet.
+
+    A partir de um nome e e-mail, descobre:
+    - Registros DNS do domínio (MX, A, AAAA, CNAME, TXT)
+    - Tecnologias utilizadas no site (~90 assinaturas)
+    - Presença em redes sociais (33 plataformas)
+    - Dados de registro do domínio via RDAP (Identity Digital + Registro.br)
+    - Resultados de busca no Google via OpenSERP
+    - E-mails expostos publicamente e menções ao nome
+
+    Todos os endpoints (exceto actuator e Swagger) exigem autenticação via header `X-API-KEY`.
+  version: "1.0"
+  contact:
+    name: "pdroti.solutions"
+    url: "https://pdroti.solutions"
+
+servers:
+  - url: "https://api-lead-enrichment.pdroti.solutions"
+    description: "Produção (HTTPS)"
+  - url: "http://localhost:8081"
+    description: "Desenvolvimento (HTTP local)"
+
+paths:
+  /api/v1/leads/enrich:
+    post:
+      tags:
+        - "Leads"
+      summary: "Enriquecer lead"
+      description: |
+        Enriquece um lead com dados públicos do domínio (DNS, RDAP, tecnologias,
+        redes sociais) ou via OpenSERP se não houver domínio.
+
+        O pipeline executa OpenSERP e DomainEnricher **em paralelo** via CompletableFuture.
+        Retorna todos os leads do mesmo domínio do lead enriquecido.
+      operationId: "enrichLead"
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadRequest"
+      responses:
+        "200":
+          description: "Lead enriquecido com sucesso — retorna lista de leads do domínio"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeadResponse"
+        "400":
+          description: "Dados inválidos (violação de @Valid)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: "API Key ausente ou inválida"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+
+  /api/v1/leads:
+    get:
+      tags:
+        - "Leads"
+      summary: "Listar todos os leads"
+      description: "Retorna todos os leads com status ACTIVE (exclui registros deletados)."
+      operationId: "listAllLeads"
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: "Lista de leads ativos"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeadResponse"
+        "401":
+          description: "API Key ausente ou inválida"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+
+  /api/v1/leads/{id}:
+    get:
+      tags:
+        - "Leads"
+      summary: "Obter lead por ID"
+      description: "Retorna os dados completos de um lead pelo ID. Apenas leads com status ACTIVE."
+      operationId: "getLeadById"
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+          description: "ID numérico do lead (formato string)"
+          example: "42"
+      responses:
+        "200":
+          description: "Lead encontrado"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadResponse"
+        "401":
+          description: "API Key ausente ou inválida"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+        "404":
+          description: "Lead não encontrado"
+
+    put:
+      tags:
+        - "Leads"
+      summary: "Atualizar lead"
+      description: |
+        Atualiza os dados de um lead existente e reenriquece com dados públicos.
+        Se o domínio não for informado, é extraído do e-mail.
+      operationId: "updateLead"
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+          description: "ID numérico do lead (formato string)"
+          example: "42"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadRequest"
+      responses:
+        "200":
+          description: "Lead atualizado e reenriquecido com sucesso"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadResponse"
+        "400":
+          description: "Dados inválidos ou lead não encontrado"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: "API Key ausente ou inválida"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+
+    delete:
+      tags:
+        - "Leads"
+      summary: "Excluir lead permanentemente"
+      description: |
+        Remove fisicamente o registro do banco de dados (hard delete).
+        O lead é excluído em 1 única query via deleteById.
+      operationId: "deleteLead"
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+          description: "ID numérico do lead (formato string)"
+          example: "42"
+      responses:
+        "200":
+          description: "Lead excluído com sucesso"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  message:
+                    type: "string"
+                    example: "Lead excluído permanentemente do banco de dados"
+                  lgpdMessage:
+                    type: "string"
+                    example: "Lead excluído com sucesso (LGPD — direito ao esquecimento)"
+                  id:
+                    type: "string"
+                    example: "42"
+        "401":
+          description: "API Key ausente ou inválida"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+        "404":
+          description: "Lead não encontrado"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  error:
+                    type: "string"
+                    example: "Lead não encontrado"
+                  id:
+                    type: "string"
+                    example: "42"
+
+  /api/v1/leads/domain/{domain}:
+    get:
+      tags:
+        - "Leads"
+      summary: "Listar leads por domínio"
+      description: "Retorna todos os leads ativos que pertencem ao domínio informado."
+      operationId: "getLeadsByDomain"
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: "domain"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+          description: "Domínio para filtrar (ex: exemplo.com)"
+          example: "exemplo.com"
+      responses:
+        "200":
+          description: "Leads encontrados para o domínio"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeadResponse"
+        "204":
+          description: "Nenhum lead encontrado para o domínio"
+        "401":
+          description: "API Key ausente ou inválida"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: "apiKey"
+      in: "header"
+      name: "X-API-KEY"
+      description: "Chave de API para autenticação. Deve ser fornecida em todas as requisições (exceto actuator e Swagger)."
+
+  schemas:
+    # ==================== Request ====================
+    LeadRequest:
+      type: "object"
+      description: "Requisição para enriquecimento ou atualização de um lead"
+      required:
+        - "email"
+        - "name"
+      properties:
+        email:
+          type: "string"
+          format: "email"
+          description: "Email do lead (obrigatório — identificador único)"
+          example: "contato@exemplo.com"
+        domain:
+          type: "string"
+          description: "Domínio para validação DNS e scraping (opcional, extraído do email se ausente)"
+          example: "exemplo.com"
+        name:
+          type: "string"
+          description: "Nome da pessoa (obrigatório)"
+          example: "João Silva"
+
+    # ==================== Response ====================
+    LeadResponse:
+      type: "object"
+      description: "Resposta com dados enriquecidos do lead (email mascarado por LGPD)"
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+          description: "ID único do lead"
+          example: 1
+        emailMasked:
+          type: "string"
+          description: "Email mascarado (LGPD) — apenas 3 primeiros caracteres visíveis"
+          example: "con***@exemplo.com"
+        name:
+          type: "string"
+          description: "Nome da pessoa"
+          example: "João Silva"
+        domain:
+          type: "string"
+          description: "Domínio validado"
+          example: "exemplo.com"
+        status:
+          type: "string"
+          description: "Status do processamento"
+          example: "ACTIVE"
+        dns:
+          $ref: "#/components/schemas/DnsRecords"
+        discovery:
+          $ref: "#/components/schemas/DiscoveryData"
+        rdap:
+          $ref: "#/components/schemas/RdapData"
+
+    # ==================== Sub-records ====================
+    DnsRecords:
+      type: "object"
+      description: "Registros DNS do domínio"
+      properties:
+        mxStatus:
+          type: "boolean"
+          description: "Se o domínio possui registro MX"
+          example: true
+        mxRecords:
+          type: "array"
+          items:
+            type: "string"
+          description: "Registros MX (servidores de e-mail)"
+          example: ["10 mail.exemplo.com."]
+        aRecords:
+          type: "array"
+          items:
+            type: "string"
+          description: "Registros A (IPv4)"
+          example: ["192.168.1.1"]
+        aaaaRecords:
+          type: "array"
+          items:
+            type: "string"
+          description: "Registros AAAA (IPv6)"
+          example: ["2001:db8::1"]
+        cnameRecords:
+          type: "array"
+          items:
+            type: "string"
+          description: "Registros CNAME (alias)"
+          example: []
+        txtRecords:
+          type: "array"
+          items:
+            type: "string"
+          description: "Registros TXT (SPF, DKIM, DMARC)"
+          example: ["v=spf1 include:_spf.google.com ~all"]
+
+    DiscoveryData:
+      type: "object"
+      description: "Dados de descoberta do lead (tecnologias, redes sociais, menções, etc.)"
+      properties:
+        technologies:
+          type: "array"
+          items:
+            type: "string"
+          description: "Tecnologias detectadas no domínio"
+          example: ["WordPress", "jQuery", "Google Analytics"]
+        socialLinks:
+          type: "array"
+          items:
+            type: "string"
+          description: "Links de redes sociais encontrados"
+          example: ["https://linkedin.com/in/joaosilva", "https://github.com/joaosilva"]
+        socialProfileSummaries:
+          type: "array"
+          items:
+            type: "string"
+          description: "Resumo dos dados scrapy dos perfis de redes sociais"
+          example: ["LinkedIn: João Silva — Engenheiro de Software"]
+        exposedEmails:
+          type: "array"
+          items:
+            type: "string"
+          description: "E-mails expostos encontrados publicamente"
+          example: ["joao.silva@exemplo.com"]
+        nameMentions:
+          type: "array"
+          items:
+            type: "string"
+          description: "Menções ao nome da pessoa encontradas"
+          example: ["Nome completo encontrado em: https://exemplo.com/sobre"]
+        nameMentionUrls:
+          type: "array"
+          items:
+            type: "string"
+          description: "URLs onde o nome foi encontrado (extraídas das menções)"
+          example: ["https://exemplo.com/sobre"]
+        dorkFindings:
+          type: "integer"
+          description: "Total de achados (e-mails expostos)"
+          example: 3
+        foundDocuments:
+          type: "array"
+          items:
+            type: "string"
+          description: "Links para documentos encontrados (PDF, DOC, etc.)"
+          example: ["https://exemplo.com/curriculo.pdf"]
+        discoveredUrls:
+          type: "array"
+          items:
+            type: "string"
+          description: "Todos os URLs descobertos"
+          example: ["https://exemplo.com", "https://github.com/joaosilva"]
+        openSerpRawData:
+          $ref: "#/components/schemas/SerpSearchResult"
+
+    RdapData:
+      type: "object"
+      description: "Dados do registro RDAP do domínio"
+      properties:
+        rawJson:
+          type: "object"
+          description: "JSON bruto retornado pela API RDAP"
+        registrar:
+          type: "string"
+          description: "Nome do registrador"
+          example: "HOSTINGER operations, UAB"
+        registrantName:
+          type: "string"
+          description: "Nome do titular do domínio"
+          example: "João Silva"
+        registrantEmail:
+          type: "string"
+          description: "E-mail do titular (quando disponível)"
+          example: "titular@exemplo.com"
+        registrationDate:
+          type: "string"
+          description: "Data de registro do domínio (ISO-8601)"
+          example: "2023-06-10T15:19:47"
+        expirationDate:
+          type: "string"
+          description: "Data de expiração do domínio (ISO-8601)"
+          example: "2027-06-10T15:19:47"
+        nameservers:
+          type: "array"
+          items:
+            type: "string"
+          description: "Servidores DNS do domínio"
+          example: ["ns1.hostinger.com", "ns2.hostinger.com"]
+        status:
+          type: "array"
+          items:
+            type: "string"
+          description: "Status do domínio"
+          example: ["client transfer prohibited"]
+        taxpayerId:
+          type: "string"
+          description: "CPF/CNPJ do titular (apenas .com.br via Registro.br)"
+          example: "123.456.789-00"
+        source:
+          type: "string"
+          description: "Fonte da consulta RDAP"
+          example: "identitydigital"
+
+    SerpSearchResult:
+      type: "object"
+      description: "Resultado estruturado da busca no Google via OpenSERP"
+      properties:
+        query:
+          type: "string"
+          description: "Termo buscado"
+          example: "João Silva"
+        totalResults:
+          type: "integer"
+          description: "Quantidade de resultados que correspondem ao nome"
+          example: 5
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SerpResultItem"
+
+    SerpResultItem:
+      type: "object"
+      description: "Resultado individual da busca no Google via OpenSERP"
+      properties:
+        position:
+          type: "integer"
+          description: "Posição no ranking da busca"
+          example: 1
+        url:
+          type: "string"
+          description: "URL completa do resultado"
+          example: "https://exemplo.com/sobre"
+        title:
+          type: "string"
+          description: "Título da página"
+          example: "João Silva — Sobre"
+        snippet:
+          type: "string"
+          description: "Trecho de contexto onde o nome foi encontrado"
+          example: "João Silva é engenheiro de software especializado em..."
+        domain:
+          type: "string"
+          description: "Domínio extraído da URL"
+          example: "exemplo.com"
+        fileType:
+          type: "string"
+          nullable: true
+          description: "Tipo do arquivo (html, pdf, doc, xls, ppt, etc.)"
+          example: "pdf"
+
+    # ==================== Errors ====================
+    UnauthorizedError:
+      type: "object"
+      description: "Erro de autenticação — API Key inválida ou ausente"
+      properties:
+        error:
+          type: "string"
+          example: "Unauthorized"
+        message:
+          type: "string"
+          example: "Invalid or missing API key"
+
+    ValidationError:
+      type: "object"
+      description: "Erro de validação de dados de entrada"
+      properties:
+        error:
+          type: "string"
+          example: "Validation Error"
+        details:
+          type: "array"
+          items:
+            type: "string"
+          example:
+            - "email: must be a well-formed email address"
+            - "name: must not be blank"
+        timestamp:
+          type: "string"
+          format: "date-time"
+          example: "2026-06-12T22:30:00"
+
+    InternalError:
+      type: "object"
+      description: "Erro interno do servidor"
+      properties:
+        error:
+          type: "string"
+          example: "Internal Server Error"
+        message:
+          type: "string"
+          example: "Ocorreu um erro interno. Tente novamente mais tarde."
+        timestamp:
+          type: "string"
+          format: "date-time"
+          example: "2026-06-12T22:30:00"
+
+tags:
+  - name: "Leads"
+    description: "Operações de enriquecimento e gerenciamento de leads"

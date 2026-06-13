@@ -31,15 +31,15 @@ public class AppConfig {
     }
 
     /**
-     * RestTemplate dedicado ao OpenSERP com timeouts mais longos,
-     * já que buscas no Google self-hosted podem levar mais de 30 segundos.
+     * RestTemplate dedicado ao OpenSERP com timeouts estendidos,
+     * já que buscas no Google self-hosted podem levar até 30 segundos.
      */
     @Bean
     @Qualifier("openSerpRestTemplate")
     public RestTemplate openSerpRestTemplate(RestTemplateBuilder builder) {
         return builder
                 .setConnectTimeout(Duration.ofSeconds(10))
-                .setReadTimeout(Duration.ofSeconds(90))
+                .setReadTimeout(Duration.ofSeconds(30))
                 .build();
     }
 }

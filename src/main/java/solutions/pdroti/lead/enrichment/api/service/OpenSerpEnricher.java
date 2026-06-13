@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Responsável pelo enriquecimento de leads via OpenSERP (Google Search).
@@ -28,7 +29,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class OpenSerpEnricher {
 
-    private static final int OPENSERP_MAX_RESULTS = 30;
+    private static final int OPENSERP_MAX_RESULTS = 15;
 
     private final OpenSerpSearch openSerpSearch;
     private final SocialDiscoveryService socialDiscoveryService;
@@ -65,8 +66,13 @@ public class OpenSerpEnricher {
         lead.setOpenSerpRawData(null);
         lead.setFoundDocuments(null);
 
-        JsonArray results = fetchResults(name);
-        JsonArray docResults = fetchDocuments(name);
+        // fetchResults e fetchDocuments executam em PARALELO
+        CompletableFuture<JsonArray> resultsFuture = CompletableFuture.supplyAsync(() -> fetchResults(name));
+        CompletableFuture<JsonArray> docsFuture = CompletableFuture.supplyAsync(() -> fetchDocuments(name));
+        CompletableFuture.allOf(resultsFuture, docsFuture).join();
+
+        JsonArray results = resultsFuture.join();
+        JsonArray docResults = docsFuture.join();
 
         boolean hasResults = (results != null && !results.isEmpty());
         boolean hasDocs = (docResults != null && !docResults.isEmpty());

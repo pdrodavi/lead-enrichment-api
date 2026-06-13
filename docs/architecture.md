@@ -64,6 +64,8 @@ graph TB
 | **Lombok** | - | Redução de boilerplate | Maven |
 
 > **Migrações relevantes:** OkHttp 4.12 foi removido — `RestTemplate` com connection pooling gerido pelo Spring substitui o cliente HTTP manual. Configurações de tecnologia e redes sociais foram externalizadas para `application.yml` via `@ConfigurationProperties`.
+>
+> **Otimização de performance:** OpenSERP e DomainEnricher executam **em paralelo** via `CompletableFuture.allOf()`. Internamente, o `OpenSerpEnricher` também paraleliza as chamadas `searchPerson` e `searchDocuments`. Timeouts reduzidos: OpenSERP 30s, Tomcat 60s.
 
 ## Diagrama de Componentes
 

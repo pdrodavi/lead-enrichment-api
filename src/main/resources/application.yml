@@ -1,15 +1,15 @@
 server:
   port: ${PORT:8081}
   tomcat:
-    connection-timeout: 300000
-    keep-alive-timeout: 300000
+    connection-timeout: 60000
+    keep-alive-timeout: 60000
 
 spring:
   application:
     name: lead-enrichment-api
   mvc:
     async:
-      request-timeout: 300000
+      request-timeout: 60000
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}

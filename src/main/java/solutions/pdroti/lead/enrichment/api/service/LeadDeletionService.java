@@ -11,10 +11,13 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
- * Serviço responsável pela exclusão de leads (soft e hard delete).
+ * Serviço responsável pela exclusão de leads.
  * <p>
- * Extraído do {@code LeadService} para manter a responsabilidade única
- * (SRP) e facilitar testes unitários.
+ * O método principal é {@link #hardDelete(String)}, que remove fisicamente
+ * o registro do banco (1 query via {@code deleteById}). O método
+ * {@link #softDelete(String)} é mantido para retrocompatibilidade.
+ * <p>
+ * Extraído do {@code LeadService} para manter a responsabilidade única (SRP).
  */
 @Slf4j
 @Service
@@ -26,8 +29,9 @@ public class LeadDeletionService {
     static final String DELETED_STATUS = "DELETED";
 
     /**
-     * Soft delete: marca o lead como DELETED (LGPD — direito ao esquecimento).
-     * O registro permanece no banco, mas é ocultado das consultas padrão.
+     * Soft delete: marca o lead como DELETED.
+     * O registro permanece no banco (status = DELETED, deletedAt preenchido),
+     * mas é ocultado das consultas padrão.
      *
      * @param id ID do lead a ser marcado como deletado
      * @return true se o lead foi encontrado e deletado, false caso contrário

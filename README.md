@@ -12,6 +12,7 @@ API para enriquecimento de leads com dados públicos da internet. A partir de um
 | [📡 Guia da API](./docs/api-guide.md) | Endpoints, parâmetros, exemplos de requisição/resposta e erros |
 | [🚀 Guia de Deploy](./docs/deployment.md) | Docker, variáveis de ambiente, produção e troubleshooting |
 | [🔒 Segurança e LGPD](./docs/security-lgpd.md) | Criptografia, mascaramento, autenticação, exclusão permanente e compliance |
+| [📜 OpenAPI Spec (YAML)](./docs/openapi.yaml) | Documentação OpenAPI 3.0 completa para geração de clientes |
 ## Architecture Decision Records (ADRs)
 
 | ID | Título | Decisão Principal |
@@ -48,7 +49,7 @@ Após 3 ciclos de revisão de código, dezenas de melhorias foram implementadas:
 | Categoria | Principais correções |
 |---|---|
 | 🔴 Segurança | Credenciais removidas para `.env`, criptografia sem fallback, log + throw na descriptografia |
-| 🔴 Performance | `hardDelete` com 1 query (try-catch `deleteById`), OpenSERP com timeouts dedicados |
+| 🔴 Performance | `hardDelete` com 1 query, **enriquecimento paralelo** (`CompletableFuture`), OpenSERP 30s timeout, limite reduzido para 15 resultados, timeouts Tomcat 60s |
 | 🟡 Arquitetura | `LeadService` extraído em `OpenSerpEnricher`, `DomainEnricher`, `LeadDeletionService`, `DataParser` |
 | 🔵 Manutenibilidade | `@Getter @Setter` no `Lead`, `SerpProcessingContext` record, `@Deprecated` removido, imports limpos |
 | 📚 Documentação | 10 ADRs, diagramas Mermaid, `.env.example`, guias atualizados |

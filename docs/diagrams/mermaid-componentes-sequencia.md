@@ -15,14 +15,14 @@ graph TB
     end
 
     subgraph "Camada de Configuração"
-        APP["AppConfig<br/>RestTemplate Bean<br/>(timeouts: 5s/20s)"]
+        APP["AppConfig<br/>RestTemplate Beans<br/>padrão: 5s/20s | OpenSERP: 10s/30s"]
         TCP["TechScraperProperties<br/>(assinaturas YAML)"]
         SDP["SocialDiscoveryProperties<br/>(domínios + plataformas)"]
     end
 
     subgraph "Camada de Serviços"
-        LS["«Orquestrador» LeadService<br/>~140 linhas"]
-        OSE["OpenSerpEnricher<br/>Orquestra busca Google + processa resultados"]
+        LS["«Orquestrador» LeadService<br/>~140 linhas<br/>⚡ CompletableFuture.allOf"]
+        OSE["OpenSerpEnricher<br/>⚡ fetchResults + fetchDocuments<br/>em paralelo (15 resultados)"]
         DE["DomainEnricher<br/>DNS, RDAP, scraping, redes sociais"]
         LDS["LeadDeletionService<br/>Hard delete (1 query) + soft delete"]
         DNS["DnsValidationService<br/>dnsjava — MX, A, AAAA, CNAME, TXT"]
@@ -286,29 +286,29 @@ sequenceDiagram
     LS->>DB: findByEmailHash(hash)
     DB-->>LS: Lead existente (ou null)
 
-    alt Domínio válido
-        LS->>DNS: lookupDomain(domain)
-        DNS-->>LS: DnsResult (MX, A, AAAA, CNAME, TXT)
+    LS->>LS: Limpa dados de enrichment
 
-        LS->>TSS: scrapeTechnologiesAndCheckName(domain, name)
-        TSS-->>LS: tecnologias, exposedEmails,<br/>nameMentions, discoveredUrls<br/>⚡ 1 chamada HTTP combinada
-
-        LS->>SDS: discoverSocialLinks(domain)
-        SDS-->>LS: List~socialLinks~, List~SocialProfileData~
-
-        LS->>RS: lookup(domain)
-        RS-->>LS: RdapData (registrar,<br/>titular, datas, NS, CPF/CNPJ)
-
-        LS->>OSS: searchPerson(name, 30)
-        OSS-->>LS: JsonArray (resultados Google)
-    else Sem domínio
-        LS->>OSS: searchPerson(name, 30)
-        OSS-->>LS: JsonArray (resultados Google)
-    end
-
-    LS->>DB: save(lead) — e-mail criptografado (AES-GCM)
-    DB-->>LS: Lead persistido com ID
-
+    critical ⚡ Execução Paralela (CompletableFuture.allOf)
+        par OpenSERP (sempre executado)
+            LS->>OSS: searchPerson(name, 15)
+            OSS-->>LS: JsonArray (resultados Google)
+            LS->>OSS: searchDocuments(name, 15)
+            OSS-->>LS: JsonArray (documentos)
+            LS->>LS: processResults + serializeResult
+        and Domínio (se disponível)
+            alt Domínio válido
+                LS->>DNS: lookupDomain(domain)
+                DNS-->>LS: DnsResult
+                LS->>TSS: scrapeTechnologiesAndCheckName(domain, name)
+                TSS-->>LS: tecnologias, menções
+                LS->>SDS: discoverSocialLinks(domain)
+                SDS-->>LS: socialLinks
+                LS->>RS: lookup(domain)
+                RS-->>LS: RdapData
+            else Sem domínio
+                note over LS: Nada — OpenSERP já executou
+            end
+        end
     LS-->>LC: Lead enriquecido
     LC-->>C: 200 OK + List~LeadResponse~<br/>(email mascarado)
 ```

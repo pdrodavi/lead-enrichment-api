@@ -149,10 +149,18 @@ public class DomainEnricher {
                 domain, rdap.registrar(), rdap.registrantName());
     }
 
+    /**
+     * Executa um Supplier com try-catch, aplicando o resultado via Consumer.
+     * Sobrecarga sem fallback — usa null como fallback padrão.
+     */
     private <T> void executeSafely(Supplier<T> supplier, Consumer<T> setter, String logId) {
         executeSafely(supplier, setter, logId, null);
     }
 
+    /**
+     * Executa um Supplier com try-catch e aplica o resultado via Consumer,
+     * utilizando um valor fallback em caso de erro.
+     */
     private <T> void executeSafely(Supplier<T> supplier, Consumer<T> setter,
                                     String logId, T fallback) {
         try {
@@ -166,6 +174,10 @@ public class DomainEnricher {
         }
     }
 
+    /**
+     * Busca links de redes sociais no domínio com try-catch.
+     * Retorna lista mutável vazia em caso de erro.
+     */
     private List<String> discoverSocialLinksSafely(String domain) {
         try {
             List<String> result = socialDiscoveryService.discoverSocialLinks(domain);

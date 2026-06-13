@@ -23,14 +23,15 @@ import java.nio.charset.StandardCharsets;
  * Cliente HTTP para a API do OpenSERP (self-hosted Google Search API).
  * <p>
  * Realiza buscas no Google de forma programática através de uma
- * instância self-hosted do OpenSERP. As consultas são usadas
- * quando não há domínio conhecido para o lead.
+ * instância self-hosted do OpenSERP. Executado pelo
+ * {@link OpenSerpEnricher} durante o pipeline de enriquecimento.
  * <p>
  * Endpoint consultado:
  * <pre>
  * GET /google/search?text={query}&limit={n}
  * </pre>
  *
+ * @see OpenSerpEnricher
  * @see <a href="https://github.com/serpapi/open-serp">OpenSERP</a>
  */
 @Slf4j
@@ -226,14 +227,13 @@ public class OpenSerpSearch {
     }
 
     /**
-     * Busca documentos (PDF, DOC, XLS, PPT, etc.) que contenham o nome da pessoa.
+     * Busca documentos (PDF) que contenham o nome da pessoa.
      * <p>
-     * Utiliza o operador {@code filetype:} do Google para filtrar resultados
-     * por tipo de arquivo. Executa uma busca separada para cada tipo.
+     * Utiliza o operador {@code filetype:pdf} do Google para filtrar resultados.
      *
      * @param name  nome da pessoa para buscar nos documentos
-     * @param limit máximo de resultados por tipo de arquivo
-     * @return JsonArray mesclado com resultados de todos os tipos de documento
+     * @param limit máximo de resultados
+     * @return JsonArray com resultados de documentos
      */
     public JsonArray searchDocuments(String name, int limit) {
         JsonArray all = new JsonArray();
