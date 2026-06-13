@@ -102,24 +102,24 @@ mindmap
       Validation
     PostgreSQL 16
     Serviços
-      LeadService (orquestrador)
-      OpenSerpEnricher (6 buscas)
+      LeadService - orquestrador
+      OpenSerpEnricher - 6 buscas
       DomainEnricher
       LeadDeletionService
-      DnsValidation (5 tipos paralelo)
-      TechScraper (60+ assinaturas)
+      DnsValidation - 5 tipos em paralelo
+      TechScraper - 60+ assinaturas
       SocialDiscovery
       RdapService
       OpenSerpSearch
       EncryptionService
     Observabilidade
       OpenTelemetry
-      Jaeger (tracing)
-      Request/Response body capture
+      Jaeger - tracing
+      Request e Response body capture
     Otimizações
       Cache Caffeine
       HTTP Connection Pooling
-      Virtual Threads (Java 21)
+      Virtual Threads - Java 21
       Gzip Compression
       Paginação
     Segurança
