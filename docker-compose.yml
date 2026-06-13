@@ -79,7 +79,7 @@ services:
         OPENSERP_API_URL: ${OPENSERP_API_URL:-http://openserp-${ENV:-dev}:7000}
         OPENSERP_API_URL_2: ${OPENSERP_API_URL_2:-http://openserp-${ENV:-dev}-2:7000}
         OPENSERP_API_URL_3: ${OPENSERP_API_URL_3:-http://openserp-${ENV:-dev}-3:7000}
-        OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://jaeger-${ENV:-dev}:4318/v1/traces}
+        OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger-${ENV:-dev}:4318/v1/traces}
         API_KEY: ${API_KEY:?Configure API_KEY no .env}
         ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?Configure ENCRYPTION_SECRET no .env}
         PORT: ${PORT:-8081}
@@ -93,7 +93,7 @@ services:
       OPENSERP_API_URL: ${OPENSERP_API_URL:-http://openserp-${ENV:-dev}:7000}
       OPENSERP_API_URL_2: ${OPENSERP_API_URL_2:-http://openserp-${ENV:-dev}-2:7000}
       OPENSERP_API_URL_3: ${OPENSERP_API_URL_3:-http://openserp-${ENV:-dev}-3:7000}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://jaeger-${ENV:-dev}:4318/v1/traces}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger-${ENV:-dev}:4318/v1/traces}
       API_KEY: ${API_KEY:?Configure API_KEY no .env}
       ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?Configure ENCRYPTION_SECRET no .env}
       PORT: ${PORT:-8081}
