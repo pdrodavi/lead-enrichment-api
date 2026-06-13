@@ -1,4 +1,4 @@
-package solutions.pdroti.lead.enrichment.api.config;
+package solutions.pdroti.lead.enrichment.api.service;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -53,18 +53,14 @@ public class EncryptionService {
 
     /**
      * Criptografa um texto plano com AES-128-GCM.
-     * <p>
-     * Gera um IV aleatório de 12 bytes, combina com o ciphertext e
-     * codifica em Base64.
      *
      * @param plainText texto a ser criptografado
-     * @return Base64(IV(12) + ciphertext) — seguro para armazenamento em string
+     * @return Base64(IV(12) + ciphertext)
      */
     public String encrypt(String plainText) {
         try {
             byte[] iv = new byte[IV_LENGTH];
-            //SecureRandom.getInstanceStrong().nextBytes(iv);
-            SecureRandom random = new SecureRandom();  // Non-blocking
+            SecureRandom random = new SecureRandom();
             random.nextBytes(iv);
 
             Cipher cipher = Cipher.getInstance(ALGORITHM);
@@ -83,9 +79,6 @@ public class EncryptionService {
 
     /**
      * Descriptografa um texto previamente criptografado com {@link #encrypt(String)}.
-     * <p>
-     * Decodifica o Base64, extrai o IV (primeiros 12 bytes) e o ciphertext,
-     * e aplica AES-128-GCM para recuperar o texto original.
      *
      * @param encryptedData Base64(IV + ciphertext) gerado por encrypt()
      * @return texto plano original

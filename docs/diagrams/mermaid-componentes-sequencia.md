@@ -21,13 +21,20 @@ graph TB
     end
 
     subgraph "Camada de Serviços"
-        LS["«Orquestrador» LeadService"]
+        LS["«Orquestrador» LeadService<br/>~140 linhas"]
+        OSE["OpenSerpEnricher<br/>Orquestra busca Google + processa resultados"]
+        DE["DomainEnricher<br/>DNS, RDAP, scraping, redes sociais"]
+        LDS["LeadDeletionService<br/>Hard delete (1 query) + soft delete"]
         DNS["DnsValidationService<br/>dnsjava — MX, A, AAAA, CNAME, TXT"]
         TSS["TechScraperService<br/>Jsoup — 1 chamada HTTP combinada"]
-        SDS["SocialDiscoveryService<br/>Jsoup — 31 plataformas"]
+        SDS["SocialDiscoveryService<br/>Jsoup — 33 plataformas"]
         RS["RdapService<br/>Identity Digital + Registro.br"]
         OSS["OpenSerpSearch<br/>RestTemplate — Google Search API"]
-        EU["EmailUtils<br/>SHA-256 hash + Mascaramento LGPD"]
+    end
+
+    subgraph "Camada Utilitária"
+        EU["EmailUtils<br/>SHA-256 + Mascaramento LGPD"]
+        DP["DataParser<br/>Parsers estáticos: data, email, nome"]
     end
 
     subgraph "Camada de Persistência"
@@ -53,12 +60,18 @@ graph TB
     SDS --> SDP
     OSS --> APP
 
-    LS --> DNS
-    LS --> TSS
-    LS --> SDS
-    LS --> RS
-    LS --> OSS
+    LS --> OSE
+    LS --> DE
+    LS --> LDS
+    LS --> DP
     LS --> EU
+
+    OSE --> OSS
+    OSE --> SDS
+    DE --> DNS
+    DE --> TSS
+    DE --> SDS
+    DE --> RS
 
     LS -->|persiste/consulta| LREPO
     LREPO --> EEC
@@ -88,7 +101,8 @@ graph TB
     class LC,OAC,GEH controller
     class AKF security
     class APP,TCP,SDP config
-    class LS,DNS,TSS,SDS,RS,OSS,EU service
+    class LS,OSE,DE,LDS,DNS,TSS,SDS,RS,OSS service
+    class EU,DP service
     class LREPO,EEC,DB persistence
     class NS,WEB,SOCIAL,RDAP_API,OPENSERP external
 ```
@@ -124,9 +138,12 @@ classDiagram
         +List~String~ rdapNameservers
         +List~String~ rdapStatus
         +String rdapTaxpayerId
-        +String serperRawJson
+        +String openSerpRawData
         +List~String~ foundDocuments
         +List~String~ discoveredUrls
+        +Boolean consentGiven
+        +LocalDateTime consentDate
+        +LocalDateTime dataRetentionUntil
         +LocalDateTime createdAt
         +LocalDateTime updatedAt
         +LocalDateTime deletedAt
@@ -143,13 +160,13 @@ classDiagram
         +String emailMasked
         +String name
         +String domain
-        +boolean mxStatus
         +String status
-        +DnsRecords dnsRecords
-        +DiscoveryData discoveryData
-        +SerpSearchResult serperRawData
+        +DnsRecords dns
+        +DiscoveryData discovery
+        +SerpSearchResult rdap
         +RdapData rdap
         +fromEntity(Lead, ObjectMapper) LeadResponse
+        +~~fromEntity(Lead) LeadResponse (deprecated)
     }
 
     class DnsRecords {

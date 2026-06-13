@@ -28,6 +28,8 @@ Implementar um handler global de exceções com `@RestControllerAdvice`:
 }
 ```
 
+> **Nota:** O timestamp é formatado com `DateTimeFormatter.ISO_LOCAL_DATE_TIME` (substituindo o `toString()` anterior, que gerava precisão variável de nanossegundos).
+
 ### Erros Tratados
 
 | Exceção | HTTP | Comportamento |

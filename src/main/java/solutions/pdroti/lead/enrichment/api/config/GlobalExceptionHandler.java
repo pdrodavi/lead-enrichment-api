@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
 /**
@@ -28,6 +29,7 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     private static final String TIMESTAMP = "timestamp";
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     /**
      * Trata erros de validação de beans {@code @Valid}.
@@ -42,7 +44,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of(
                 "error", "Validation Error",
                 "details", errors,
-                TIMESTAMP, LocalDateTime.now().toString()
+                TIMESTAMP, LocalDateTime.now().format(TIMESTAMP_FORMATTER)
         ));
     }
 
@@ -56,7 +58,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of(
                 "error", "Bad Request",
                 "message", ex.getMessage(),
-                TIMESTAMP, LocalDateTime.now().toString()
+                TIMESTAMP, LocalDateTime.now().format(TIMESTAMP_FORMATTER)
         ));
     }
 
@@ -87,7 +89,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "error", "Internal Server Error",
                 "message", "Ocorreu um erro interno. Tente novamente mais tarde.",
-                TIMESTAMP, LocalDateTime.now().toString()
+                TIMESTAMP, LocalDateTime.now().format(TIMESTAMP_FORMATTER)
         ));
     }
 }

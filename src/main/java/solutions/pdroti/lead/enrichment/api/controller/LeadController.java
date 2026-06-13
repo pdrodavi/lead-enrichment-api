@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import solutions.pdroti.lead.enrichment.api.dto.LeadRequest;
 import solutions.pdroti.lead.enrichment.api.dto.LeadResponse;
+import solutions.pdroti.lead.enrichment.api.service.LeadDeletionService;
 import solutions.pdroti.lead.enrichment.api.service.LeadService;
 import solutions.pdroti.lead.enrichment.api.util.EmailUtils;
 
@@ -19,11 +20,12 @@ import java.util.Map;
  * Controlador REST da API de Leads.
  * <p>
  * Endpoints para enriquecimento, listagem, consulta, atualização e
- * remoção de leads (com suporte a soft delete para LGPD).
+ * remoção permanente de leads.
  * <p>
  * Todos os endpoints exigem a header {@code X-API-KEY} para autenticação.
  *
  * @see LeadService
+ * @see LeadDeletionService
  * @see LeadRequest
  * @see LeadResponse
  */
@@ -34,6 +36,7 @@ import java.util.Map;
 public class LeadController {
 
     private final LeadService leadService;
+    private final LeadDeletionService leadDeletionService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -130,19 +133,20 @@ public class LeadController {
     }
 
     /**
-     * Soft delete do lead (LGPD — direito ao esquecimento).
-     * O registro é mantido no banco com status DELETED.
+     * Exclui permanentemente um lead do banco de dados (hard delete).
+     * O registro é removido fisicamente — não é um soft delete.
      *
      * @param id ID do lead a ser excluído
      * @return 200 com mensagem de confirmação, ou 404 se não encontrado
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, Object>> deleteLead(@PathVariable String id) {
-        boolean deleted = leadService.softDelete(id);
+        boolean deleted = leadDeletionService.hardDelete(id);
         if (deleted) {
-            log.info("DELETE /{} soft deleted", id);
+            log.info("DELETE /{} permanently deleted", id);
             return ResponseEntity.ok(Map.of(
-                    "message", "Lead excluído com sucesso (LGPD — direito ao esquecimento)",
+                    "message", "Lead excluído permanentemente do banco de dados",
+                    "lgpdMessage", "Lead excluído com sucesso (LGPD — direito ao esquecimento)",
                     "id", id
             ));
         }

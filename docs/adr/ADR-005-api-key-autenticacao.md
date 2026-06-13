@@ -44,8 +44,9 @@ public class ApiKeyFilter extends OncePerRequestFilter {
     protected void doFilterInternal(...) {
         String apiKey = request.getHeader("X-API-KEY");
         if (apiKey == null || !apiKey.equals(expectedApiKey)) {
-            response.setStatus(401);
-            response.getWriter().write("{\"error\":\"API Key ausente ou inválida\"}");
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Invalid or missing API key\"}");
             return;
         }
         filterChain.doFilter(request, response);
@@ -82,6 +83,17 @@ public class ApiKeyFilter extends OncePerRequestFilter {
 | JWT / OAuth2 | Complexidade excessiva para uma API interna; sem necessidade de refresh tokens |
 | Basic Auth | Usuário/senha expostos em texto plano, menos seguro que API Key |
 | Spring Security | Overhead de configuração para uma regra simples de filtro |
+
+### Configuração da Chave
+
+A API Key é lida da variável de ambiente `API_KEY` (obrigatória, sem fallback):
+
+```yaml
+api:
+  key: ${API_KEY}
+```
+
+Anteriormente havia um fallback hardcoded (`b6vxAgj5KG5HPGCKlQQ7`) que foi removido por segurança. A chave deve ser fornecida via `.env` ou variável de ambiente.
 
 ## Referências
 

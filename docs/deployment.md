@@ -61,17 +61,45 @@ Certifique-se de que o PostgreSQL 16 está rodando na porta `5433`.
 docker run -d --name openserp -p 7000:7000 karust/openserp:latest serve -a 0.0.0.0 -p 7000
 ```
 
-### 3. Executar a aplicação
+### 3. Configurar variáveis de ambiente
 
 ```bash
-# Com Maven
-mvn spring-boot:run -Dmaven.test.skip=true
+cp .env.example .env
+# Edite .env com suas credenciais reais
+```
 
-# Com variáveis customizadas
-API_KEY=minha-chave ENCRYPTION_SECRET=minha-chave-aes-16bytes mvn spring-boot:run
+### 4. Executar a aplicação
+
+```bash
+# Opção A — Script run.bat (carrega .env automaticamente)
+run.bat
+
+# Opção B — Ctrl+Shift+B no VS Code (usa a task configurada)
+# A task já executa run.bat
+
+# Opção C — Maven direto (exige variáveis exportadas)
+set API_KEY=minha-chave
+set ENCRYPTION_SECRET=minha-chave-aes-16bytes
+mvn spring-boot:run -Dmaven.test.skip=true
 ```
 
 ---
+
+## Variáveis de Ambiente
+
+Todas as configurações sensíveis são lidas do arquivo `.env` ou de variáveis de ambiente:
+
+| Variável | Obrigatória | Descrição | Exemplo |
+|---|---|---|---|
+| `DB_URL` | ✅ | URL do PostgreSQL | `jdbc:postgresql://host:5432/postgres` |
+| `DB_USERNAME` | ✅ | Usuário do banco | `postgres` |
+| `DB_PASSWORD` | ✅ | Senha do banco | — |
+| `API_KEY` | ✅ | Chave de autenticação da API | — |
+| `ENCRYPTION_SECRET` | ✅ | Secret AES-128-GCM (mín. 16 bytes) | — |
+| `OPENSERP_API_URL` | ✅ | URL do OpenSERP self-hosted | `https://openserp.exemplo.com` |
+| `PORT` | ❌ | Porta da aplicação (default: 8081) | `8081` |
+
+> ⚠️ **Nunca** commite o `.env` — ele já está no `.gitignore`.
 
 ## Build da Imagem Docker
 

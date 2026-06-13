@@ -43,37 +43,27 @@ flowchart TD
         CALL_SERVICE_UPDATE["update(id, email, domain, name)"]
         CALL_SERVICE_DELETE["softDelete(id)"]
 
-        CALL_SERVICE --> EXTRACT["Extrair dominio do e-mail se ausente"]
-        EXTRACT --> HASH["Gerar SHA-256 hash"]
-        HASH --> FIND{"findByEmailHash Lead existente?"}
-        FIND -->|"Sim, reenriquecer"| HAS_DOMAIN
-        FIND -->|"Nao, criar novo"| HAS_DOMAIN
-
-        HAS_DOMAIN{"Dominio presente?"}
+        CALL_SERVICE --> RESET_ENRICH["domainEnricher.resetEnrichmentData()"]
+        RESET_ENRICH --> OPENSERP_ENRICH["openSerpEnricher.enrich(lead, name)<br/>SerpProcessingContext"]
+        OPENSERP_ENRICH --> HAS_DOMAIN{"Domínio presente?"}
         HAS_DOMAIN -->|"Sim"| FULL_FLOW
-        HAS_DOMAIN -->|"Nao"| OPENSERP_ONLY
+        HAS_DOMAIN -->|"Não"| SAVE
 
-        subgraph FULL_FLOW["Fluxo Completo"]
+        subgraph FULL_FLOW["DomainEnricher.enrich()"]
             D_CALL["DnsValidationService lookupDomain"]
             T_CALL["TechScraperService<br/>scrapeTechnologiesAndCheckName<br/>⚡ 1 chamada HTTP"]
             S_CALL["SocialDiscoveryService discoverSocialLinks"]
             R_CALL["RdapService lookup"]
-            O_CALL["OpenSerpSearch searchPerson<br/>(RestTemplate)"]
-        end
-
-        subgraph OPENSERP_ONLY["Fluxo Reduzido"]
-            O_CALL2["OpenSerpSearch searchPerson<br/>(RestTemplate)"]
         end
 
         FULL_FLOW --> SAVE
-        OPENSERP_ONLY --> SAVE
         SAVE["save/update no PostgreSQL"]
-        
+
         CALL_SERVICE_LIST --> DB_LIST["findByStatus ACTIVE"]
         CALL_SERVICE_FIND --> DB_FIND["findById + status != DELETED"]
         CALL_SERVICE_DOMAIN --> DB_DOMAIN["findByDomainAndStatus"]
         CALL_SERVICE_UPDATE --> DB_UPDATE["findById + save"]
-        CALL_SERVICE_DELETE --> DB_DELETE["set status=DELETED"]
+        CALL_SERVICE_DELETE --> DB_DELETE["deleteById (hard delete — 1 query)"]
     end
 
     SAVE --> FORMAT_RESP["Converter Lead para LeadResponse"]
@@ -110,7 +100,7 @@ flowchart TD
     style OPENSERP_ONLY fill:#fff5f5,stroke:#e03131,stroke-width:2px
 ```
 
-> **Nota:** O fluxo completo de tecnologias + verificação de nome agora é feito em **uma única requisição HTTP** via `scrapeTechnologiesAndCheckName()`. O `OpenSerpSearch` usa `RestTemplate` (gerenciado pelo Spring) em vez de `OkHttpClient` manual.
+> **Nota:** Desde a refatoração, o `LeadService` passou a ser um orquestrador puro (~140 linhas) que delega para `OpenSerpEnricher` (busca Google), `DomainEnricher` (DNS + RDAP + scraping + sociais) e `LeadDeletionService` (hard delete em 1 query). O fluxo completo de tecnologias + verificação de nome é feito em **uma única requisição HTTP** via `scrapeTechnologiesAndCheckName()`. O `OpenSerpSearch` usa `RestTemplate` (gerenciado pelo Spring) em vez de `OkHttpClient` manual.
 
 ## Diagrama de Contexto da API
 
@@ -150,7 +140,7 @@ graph LR
     style SVC fill:#ebfbee,stroke:#2f9e44
 ```
 
-## Diagrama de Estados do Endpoint DELETE (LGPD)
+## Diagrama de Estados do Endpoint DELETE (Hard Delete)
 
 ```mermaid
 stateDiagram-v2
@@ -159,20 +149,17 @@ stateDiagram-v2
     ACTIVE --> ENRICHED : Reenriquecimento
     ENRICHED --> ACTIVE : Dados atualizados
 
-    ACTIVE --> SOFT_DELETED : DELETE /api/v1/leads/{id}
-    ENRICHED --> SOFT_DELETED : DELETE /api/v1/leads/{id}
+    ACTIVE --> DELETED : DELETE /api/v1/leads/{id}
+    ENRICHED --> DELETED : DELETE /api/v1/leads/{id}
 
-    SOFT_DELETED --> SOFT_DELETED : Aguardando expurgo
-    SOFT_DELETED --> PURGED : Expurgo apos 365 dias
+    DELETED --> [*] : Registro removido fisicamente<br/>deleteById (1 query)
 
-    PURGED --> [*]
-
-    note right of SOFT_DELETED
-        Status: "DELETED"
-        deletedAt = NOW()
-        Dados NAO retornados
-        em consultas padrao
-        Email permanece criptografado
+    note right of DELETED
+        Hard delete via
+        LeadDeletionService
+        deleteById + try-catch
+        EmptyResultDataAccessException
+        Log: "Lead hard deleted: ID=X"
     end note
 
     note right of ACTIVE

@@ -42,7 +42,7 @@ public record DiscoveryData(
         List<String> discoveredUrls,
 
         @Schema(description = "Resultado estruturado da busca no OpenSERP")
-        SerpSearchResult serperRawData
+        SerpSearchResult openSerpRawData
 ) {
 
     /** Retorna um DiscoveryData vazio (sem dados). */

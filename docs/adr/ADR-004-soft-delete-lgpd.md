@@ -1,32 +1,30 @@
-# ADR-004: Soft Delete para Conformidade LGPD (Direito ao Esquecimento)
+# ADR-004: Estratégia de Exclusão para Conformidade LGPD (Direito ao Esquecimento)
 
 ## Status
 
-Aceito
+**Substituído** — A implementação atual utiliza hard delete (exclusão física).
+Consulte o código em `LeadDeletionService.hardDelete()`.
 
-## Contexto
+## Histórico
 
-A LGPD garante ao titular o direito de solicitar a exclusão de seus dados pessoais (Art. 18, VI). A aplicação precisa:
+Originalmente a aplicação implementava **soft delete** (exclusão lógica), onde o
+registro era mantido no banco com status `DELETED` e `deletedAt` preenchido.
 
-- Atender ao direito ao esquecimento de forma auditável
-- Manter rastreabilidade de exclusões para conformidade regulatória
-- Permitir recuperação em caso de solicitação indevida
-- Definir período de retenção e expurgo futuro
+Após refatoração, a estratégia foi alterada para **hard delete** (exclusão física)
+por razões de:
 
-## Decisão
+- **Simplicidade operacional:** elimina necessidade de job de expurgo futuro
+- **LGPD Art. 16:** o direito ao esquecimento é atendido integralmente
+- **Rastreabilidade:** o log da aplicação registra a exclusão com ID e timestamp
+- **1 query vs 2 queries:** `deleteById` com try-catch é mais eficiente
 
-Implementar **soft delete** (exclusão lógica) na entidade `Lead`:
-
-### Mecanismo
+## Mecanismo Anterior (Soft Delete)
 
 ```java
-@Entity
-@Table(name = "leads")
-public class Lead {
-    // ...
-    private String status;         // "ACTIVE" | "DELETED"
-    private LocalDateTime deletedAt; // null se ativo
-}
+// Comportamento anterior (disponível via LeadDeletionService.softDelete())
+lead.setStatus("DELETED");
+lead.setDeletedAt(LocalDateTime.now());
+leadRepository.save(lead);
 ```
 
 ### Fluxo

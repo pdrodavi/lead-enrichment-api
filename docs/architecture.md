@@ -17,12 +17,16 @@ graph TB
     end
 
     subgraph "Camada de Serviços"
-        CTRL --> LS[LeadService]
-        LS --> DNS[DnsValidationService]
-        LS --> TSS[TechScraperService]
-        LS --> SDS[SocialDiscoveryService]
-        LS --> RS[RdapService]
-        LS --> OSS[OpenSerpSearch]
+        CTRL --> LS[LeadService<br/>Orquestrador]
+        LS --> OSE[OpenSerpEnricher]
+        LS --> DE[DomainEnricher]
+        LS --> LDS[LeadDeletionService]
+        OSE --> OSS[OpenSerpSearch]
+        OSE --> SDS[SocialDiscoveryService]
+        DE --> DNS[DnsValidationService]
+        DE --> TSS[TechScraperService]
+        DE --> SDS[SocialDiscoveryService]
+        DE --> RS[RdapService]
     end
 
     subgraph "Camada de Persistência"
@@ -40,7 +44,7 @@ graph TB
 
     subgraph "Criptografia"
         PG --> EEC[EncryptedEmailConverter]
-        EEC --> ES[EncryptionService<br/>AES-128-GCM]
+        EEC --> ES[EncryptionService<br/>AES-128-GCM<br/>packages: service/]
     end
 ```
 
@@ -70,7 +74,6 @@ graph LR
         OAC[OpenApiConfig]
         GHE[GlobalExceptionHandler]
         EEC[EncryptedEmailConverter]
-        ES[EncryptionService]
         APP[AppConfig<br/>RestTemplate Bean]
     end
 
@@ -85,11 +88,15 @@ graph LR
 
     subgraph "Services"
         LS[LeadService]
+        OSE[OpenSerpEnricher]
+        DE[DomainEnricher]
+        LDS[LeadDeletionService]
         DVS[DnsValidationService]
         TSS[TechScraperService]
         SDS[SocialDiscoveryService]
         RS[RdapService]
         OSS[OpenSerpSearch]
+        ES[EncryptionService]
     end
 
     subgraph "Repository"

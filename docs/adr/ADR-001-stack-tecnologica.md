@@ -13,7 +13,6 @@ A aplicação de enriquecimento de leads precisa de um framework web moderno, se
 - Cliente HTTP para APIs externas
 - Parsing de HTML para scraping
 - Documentação automática de API
-- Suporte a cache distribuído
 - Configuração externalizada via @ConfigurationProperties
 
 ## Decisão
@@ -36,16 +35,18 @@ Adotar a seguinte stack tecnológica:
 ## Consequências
 
 - Positivas:
-  - Aplicação facilmente executável com `mvn spring-boot:run`
+  - Aplicação facilmente executável com `run.bat` ou `Ctrl+Shift+B` no VS Code
   - Documentação Swagger disponível em `/swagger-ui.html` sem configuração adicional
   - Health checks prontos para orquestração (Docker Compose, Kubernetes)
   - Código reduzido com Lombok
-  - Configurações externalizadas em YAML permitem ajustes sem recompilar
+  - Configurações externalizadas em YAML + `.env` permitem ajustes sem recompilar
+  - Segredos removidos do repositório (`.env.example` documenta variáveis obrigatórias)
 
 - Negativas:
   - Java 17 como dependência de runtime obrigatória
   - Spring Boot 3.3.x exige Jakarta EE 10 (jakarta.* em vez de javax.*)
   - Lombok requer configuração na IDE para suporte completo
+  - `.env` deve ser configurado antes da primeira execução
 
 ## Referências
 

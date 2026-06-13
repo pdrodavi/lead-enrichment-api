@@ -26,9 +26,8 @@ X-API-KEY: <sua-chave>
 
 ```json
 {
-  "error": "API Key ausente ou inválida",
-  "message": "Forneça uma chave válida no header X-API-KEY",
-  "timestamp": "2026-06-10T12:00:00"
+  "error": "Unauthorized",
+  "message": "Invalid or missing API key"
 }
 ```
 

@@ -1,5 +1,5 @@
 server:
-  port: 8081
+  port: ${PORT:8081}
   tomcat:
     connection-timeout: 300000
     keep-alive-timeout: 300000
@@ -11,9 +11,9 @@ spring:
     async:
       request-timeout: 300000
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5433/postgres}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:pgsqldev}
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
   jpa:
     show-sql: false
     format-sql: false
@@ -23,14 +23,14 @@ spring:
     serialization:
       write-dates-as-timestamps: false
 
-serper:
+open-serp:
   api:
-    url: ${SERPER_API_URL:http://localhost:7000}
+    url: ${OPENSERP_API_URL}
 
 api:
-  key: ${API_KEY:b6vxAgj5KG5HPGCKlQQ7}
+  key: ${API_KEY}
   encryption:
-    secret: ${ENCRYPTION_SECRET:f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=}
+    secret: ${ENCRYPTION_SECRET}
 
 management:
   endpoints:

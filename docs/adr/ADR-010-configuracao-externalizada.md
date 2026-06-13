@@ -10,9 +10,22 @@ O código original continha diversos mapas e listas hardcoded nas classes de ser
 
 - **TechScraperService**: Mapa com ~90 assinaturas HTML para detecção de tecnologias (`SOCIAL_SIGNATURES`, `ANALYTICS_SIGNATURES`, etc.)
 - **SocialDiscoveryService**: Lista de 31 domínios de redes sociais (`SOCIAL_DOMAINS`) e mapa de nomes amigáveis (`PLATFORM_NAMES`)
-- **OpenSerpSearch**: Constantes de timeout (`CONNECT_TIMEOUT_SECONDS`, `READ_TIMEOUT_SECONDS`)
-
 Esses valores mudam com frequência (novas plataformas, alterações em assinaturas HTML) e não deveriam exigir recompilação.
+
+### Refatoração Posterior: Externalização de Secrets
+
+Em rodadas posteriores de refatoração, as credenciais e senhas (API_KEY, ENCRYPTION_SECRET, DB_PASSWORD) também foram externalizadas para variáveis de ambiente, eliminando fallbacks hardcoded do `application.yml`. Agora são lidas exclusivamente de:
+
+- **`.env`** (desenvolvimento local, carregado pelo `run.bat`)
+- **Variáveis de ambiente do sistema** (produção/Docker)
+
+```yaml
+# application.yml (sem fallbacks)
+api:
+  key: ${API_KEY}
+  encryption:
+    secret: ${ENCRYPTION_SECRET}
+```
 
 ## Decisão
 
@@ -43,39 +56,50 @@ techscraper:
 ```java
 @ConfigurationProperties(prefix = "social-discovery")
 public class SocialDiscoveryProperties {
-    private Map<String, String> domains;         // plataforma → domínio
-    private Map<String, String> platformNames;   // domínio → nome amigável
-    private int connectTimeoutSeconds;
-    private int readTimeoutSeconds;
+    private List<String> socialDomains = List.of();         // lista de domínios
+    private Map<String, String> platformNames = Map.of();   // domínio → nome amigável
 }
 ```
 
 ```yaml
 social-discovery:
-  domains:
-    linkedin: "linkedin.com"
-    github: "github.com"
-    # ... 31 plataformas
+  social-domains:
+    - linkedin.com
+    - github.com
+    # ... 33 plataformas
   platform-names:
     linkedin.com: "LinkedIn"
     github.com: "GitHub"
-    # ... 31 nomes
+    # ... 33 nomes
 ```
 
-#### AppConfig (RestTemplate Bean)
+#### AppConfig (RestTemplate Beans)
 
 ```java
 @Configuration
 public class AppConfig {
+
     @Bean
-    public RestTemplate restTemplate() {
-        return new RestTemplate(new SimpleClientHttpRequestFactory() {{
-            setConnectTimeout(Duration.ofSeconds(5));
-            setReadTimeout(Duration.ofSeconds(20));
-        }});
+    @Primary
+    public RestTemplate restTemplate(RestTemplateBuilder builder) {
+        return builder
+                .setConnectTimeout(Duration.ofSeconds(5))
+                .setReadTimeout(Duration.ofSeconds(20))
+                .build();
+    }
+
+    @Bean
+    @Qualifier("openSerpRestTemplate")
+    public RestTemplate openSerpRestTemplate(RestTemplateBuilder builder) {
+        return builder
+                .setConnectTimeout(Duration.ofSeconds(10))
+                .setReadTimeout(Duration.ofSeconds(90))
+                .build();
     }
 }
 ```
+
+> Foram configurados **dois** beans de `RestTemplate`: um padrão (timeouts 5s/20s) e um dedicado ao OpenSERP (timeouts 10s/90s), já que buscas no Google self-hosted podem levar mais de 30 segundos.
 
 ### Ativação
 

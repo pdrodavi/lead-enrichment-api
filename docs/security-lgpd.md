@@ -22,9 +22,9 @@ graph TB
         MASK --> RESP[Respostas da API]
     end
 
-    subgraph "Exclusão Segura"
-        SD[Soft Delete] --> RET[Retenção 365 dias]
-        RET --> PURGE[Expurgo Futuro]
+    subgraph "Exclusão Permanente"
+        HD[Hard Delete] --> DEL[Registro removido fisicamente]
+        HD --> AUD[Log de exclusão]
     end
 ```
 
@@ -43,7 +43,7 @@ graph TB
 
 | Componente | Arquivo | Responsabilidade |
 |---|---|---|
-| `EncryptionService` | `config/EncryptionService.java` | Serviço de criptografia AES-GCM |
+| `EncryptionService` | `service/EncryptionService.java` | Serviço de criptografia AES-GCM |
 | `EncryptedEmailConverter` | `config/EncryptedEmailConverter.java` | Converter automático JPA |
 
 ### Fluxo de Criptografia
@@ -74,7 +74,39 @@ Entrada (texto plano): "joao@exemplo.com"
 
 ---
 
-## 2. Mascaramento de Dados (LGPD Art. 6)
+## 2. Exclusão de Dados (LGPD Art. 15 e 16)
+
+### Hard Delete
+
+Atualmente a API utiliza **exclusão física (hard delete)** — o registro é removido permanentemente do banco de dados:
+
+```http
+DELETE /api/v1/leads/{id}
+X-API-KEY: <sua-chave>
+```
+
+**Resposta de sucesso (200):**
+
+```json
+{
+  "message": "Lead excluído permanentemente do banco de dados",
+  "lgpdMessage": "Lead excluído com sucesso (LGPD — direito ao esquecimento)",
+  "id": "1"
+}
+```
+
+### Implementação
+
+| Componente | Arquivo | Função |
+|---|---|---|
+| `LeadDeletionService` | `service/LeadDeletionService.java` | Orquestra hard/soft delete |
+| `LeadController.deleteLead` | `controller/LeadController.java` | Endpoint REST |
+
+O `hardDelete` executa `deleteById` em **1 única query**, capturando `EmptyResultDataAccessException` se o ID não existir.
+
+---
+
+## 3. Mascaramento de Dados (LGPD Art. 6)
 
 ### Em Respostas da API
 
@@ -96,7 +128,7 @@ INFO  LeadService - Enriquecendo lead: nome=João email=jo***@exemplo.com
 
 ---
 
-## 3. Armazenamento Seguro (LGPD Art. 46)
+## 4. Armazenamento Seguro (LGPD Art. 46)
 
 ### Hash para Consulta
 
@@ -122,7 +154,7 @@ private static final ThreadLocal<MessageDigest> DIGEST_CACHE =
 
 ---
 
-## 4. Autenticação (LGPD Art. 47)
+## 5. Autenticação (LGPD Art. 47)
 
 ### API Key via Header
 
@@ -155,7 +187,7 @@ Os seguintes endpoints **não exigem** autenticação:
 
 ---
 
-## 5. Soft Delete (LGPD Art. 18, VI)
+## 6. Soft Delete (Histórico)
 
 ### Direito ao Esquecimento
 
@@ -190,7 +222,7 @@ sequenceDiagram
 
 ---
 
-## 6. Medidas de Segurança Adicionais
+## 7. Medidas de Segurança Adicionais
 
 ### Validação de Entrada
 
@@ -215,7 +247,7 @@ sequenceDiagram
 
 ---
 
-## 7. Melhorias de Segurança Aplicadas (Pós-Refatoração)
+## 8. Melhorias de Segurança Aplicadas (Pós-Refatoração)
 
 Durante o processo de revisão de código, as seguintes correções de segurança foram aplicadas:
 
@@ -229,7 +261,7 @@ Durante o processo de revisão de código, as seguintes correções de seguranç
 
 ---
 
-## 8. Checklist de Conformidade LGPD
+## 9. Checklist de Conformidade LGPD
 
 | Requisito LGPD | Implementação | Status |
 |---|---|---|
