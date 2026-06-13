@@ -1,8 +1,8 @@
-# ADR-001: Stack Tecnológica — Java 17, Spring Boot 3.3 e Maven
+# ADR-001: Stack Tecnológica — Java 21, Spring Boot 3.3 e Maven
 
 ## Status
 
-Aceito
+Atualizado (Jun/2026) — Migração de Java 17 → 21
 
 ## Contexto
 
@@ -14,6 +14,7 @@ A aplicação de enriquecimento de leads precisa de um framework web moderno, se
 - Parsing de HTML para scraping
 - Documentação automática de API
 - Configuração externalizada via @ConfigurationProperties
+- Observabilidade com tracing distribuído (OpenTelemetry + Jaeger)
 
 ## Decisão
 
@@ -21,13 +22,17 @@ Adotar a seguinte stack tecnológica:
 
 | Tecnologia | Versão | Função | Justificativa |
 |---|---|---|---|
-| **Java** | 17 | Runtime | LTS mais recente com suporte estendido; records, pattern matching, sealed classes |
-| **Spring Boot** | 3.3.13 | Framework principal | Maturidade, ecossistema, suporte a Spring Data JPA, Actuator, Validation |
-| **Maven** | 3.8+ | Build & dependências | Declarativo, consistente, amplamente documentado |
+| **Java** | **21** | Runtime | Virtual Threads nativas para I/O-bound; records, pattern matching |
+| **Spring Boot** | 3.3.13 | Framework principal | Maturidade, ecossistema, suporte a Virtual Threads e OTel |
+| **Maven** | 3.9+ | Build & dependências | Necessário para compatibilidade com JDK 21 |
 | **Lombok** | - | Boilerplate | Redução de código (Slf4j, Builder, RequiredArgsConstructor) |
 | **SpringDoc OpenAPI** | 2.5.0 | Documentação | Swagger UI automático com anotações @Schema, @Operation |
 | **Spring Actuator** | - | Monitoramento | Health checks, métricas, probes de Kubernetes |
 | **Spring Validation** | - | Validação | @Valid + @NotBlank/@Email nos DTOs |
+| **OpenTelemetry** | 1.38+ | Tracing | Exportação OTLP para Jaeger (HTTP/protobuf na porta 4318) |
+| **Micrometer Tracing** | 1.3+ | Bridge OTel | Integração automática com Spring Boot |
+| **Caffeine** | - | Cache | Cache em memória (DNS, tecnologias, links sociais) com TTL 1h |
+| **Apache HttpClient 5** | - | HTTP Pooling | Connection pooling para RestTemplate (200 conexões máx) |
 | **Jackson** | - | Serialização | Padrão Spring Boot, ObjectMapper injetado via Spring |
 | **Spring RestTemplate** | - | Cliente HTTP | Bean gerenciado pelo Spring em AppConfig (timeouts 5s/20s) |
 | **@ConfigurationProperties** | - | Config externalizada | Prefixos YAML para TechScraperProperties e SocialDiscoveryProperties |

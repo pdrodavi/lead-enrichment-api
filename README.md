@@ -17,16 +17,16 @@ API para enriquecimento de leads com dados públicos da internet. A partir de um
 
 | ID | Título | Decisão Principal |
 |---|---|---|
-| [ADR-001](./docs/adr/ADR-001-stack-tecnologica.md) | Stack Tecnológica | Java 17 + Spring Boot 3.3 + Maven + Lombok |
+| [ADR-001](./docs/adr/ADR-001-stack-tecnologica.md) | Stack Tecnológica | **Java 21** + Spring Boot 3.3 + Maven + Lombok |
 | [ADR-002](./docs/adr/ADR-002-postgresql-jpa.md) | PostgreSQL + Spring Data JPA | PostgreSQL 16 com ddl-auto=update e @ElementCollection |
 | [ADR-003](./docs/adr/ADR-003-criptografia-pii-aes-gcm.md) | Criptografia de PII (LGPD) | AES-128-GCM via AttributeConverter + SHA-256 hash para consulta |
-| [ADR-004](./docs/adr/ADR-004-soft-delete-lgpd.md) | Exclusão para LGPD | Exclusão física com registro de auditoria |
+| [ADR-004](./docs/adr/ADR-004-soft-delete-lgpd.md) | Exclusão para LGPD | Hard delete (exclusão física) |
 | [ADR-005](./docs/adr/ADR-005-api-key-autenticacao.md) | Autenticação via API Key | Servlet Filter com validação de header X-API-KEY |
-| [ADR-006](./docs/adr/ADR-006-arquitetura-enriquecimento.md) | Arquitetura de Enriquecimento | Orquestração centralizada com 8 serviços especializados e isolamento de falhas |
+| [ADR-006](./docs/adr/ADR-006-arquitetura-enriquecimento.md) | Arquitetura de Enriquecimento | Orquestração centralizada com 12 serviços especializados e isolamento de falhas |
 | [ADR-007](./docs/adr/ADR-007-springdoc-openapi.md) | Documentação com SpringDoc/OpenAPI | Swagger UI auto-gerado com schema de segurança documentado |
 | [ADR-008](./docs/adr/ADR-008-mascaramento-dados-lgpd.md) | Mascaramento de Dados (LGPD) | EmailUtils com mascaramento centralizado em logs e respostas |
 | [ADR-009](./docs/adr/ADR-009-tratamento-global-erros.md) | Tratamento Global de Erros | @RestControllerAdvice com JSON padronizado |
-| [ADR-010](./docs/adr/ADR-010-configuracao-externalizada.md) | Configuração Externalizada | @ConfigurationProperties para TechScraper e SocialDiscovery |
+| [ADR-010](./docs/adr/ADR-010-configuracao-externalizada.md) | Configuração Externalizada | @ConfigurationProperties para TechScraper, SocialDiscovery e OpenSerpProxy |
 
 ## Diagramas
 
@@ -48,10 +48,14 @@ Após 3 ciclos de revisão de código, dezenas de melhorias foram implementadas:
 
 | Categoria | Principais correções |
 |---|---|
-| 🔴 Segurança | Credenciais removidas para `.env`, criptografia sem fallback, log + throw na descriptografia |
-| 🔴 Performance | `hardDelete` com 1 query, **enriquecimento paralelo** (`CompletableFuture`), OpenSERP 30s timeout, limite reduzido para 15 resultados, timeouts Tomcat 60s |
+| 🔴 Segurança | Credenciais removidas para `.env`, criptografia sem fallback, log + throw na descriptografia, API Key via filter |
+| 🟢 Java 21 | Migração JDK 17 → 21 com Virtual Threads (`Executors.newVirtualThreadPerTaskExecutor()`) |
+| 🟢 Observabilidade | OpenTelemetry + Jaeger (`management.otlp.tracing.endpoint`) com captura de request/response body |
+| 🟢 Performance | Cache Caffeine (DNS, tech, social), HTTP Connection Pooling (HttpClient 5), compressão Gzip, paginação |
+| 🔴 Performance | Consultas DNS paralelas (5 tipos simultâneos), 6 buscas OpenSERP em paralelo, rate limiting 2s |
+| 🟡 Infra | Docker Compose com Jaeger, 3 OpenSERP, rede npm, proxy rotation + circuit breaker |
 | 🟡 Arquitetura | `LeadService` extraído em `OpenSerpEnricher`, `DomainEnricher`, `LeadDeletionService`, `DataParser` |
-| 🔵 Manutenibilidade | `@Getter @Setter` no `Lead`, `SerpProcessingContext` record, `@Deprecated` removido, imports limpos |
+| 🔵 Manutenibilidade | `@Getter @Setter` no `Lead`, `@ConfigurationPropertiesScan`, `@EnableSpringDataWebSupport(VIA_DTO)` |
 | 📚 Documentação | 10 ADRs, diagramas Mermaid, `.env.example`, guias atualizados |
 
 ---
@@ -66,9 +70,9 @@ cp .env.example .env
 # 2. Execute com Docker Compose
 docker compose up --build
 
-# 3. Ou execute localmente (carrega .env automaticamente)
-run.bat
-# Ou: Ctrl+Shift+B no VS Code
+# 3. Ou execute localmente com JDK 21
+build-jdk21.bat spring-boot:run -Dmaven.test.skip=true
+# Ou: Ctrl+Shift+B no VS Code (task configurada)
 
 # 4. Acesse a API
 curl -H "X-API-KEY: $(grep API_KEY .env | cut -d= -f2)" \
@@ -78,6 +82,9 @@ curl -H "X-API-KEY: $(grep API_KEY .env | cut -d= -f2)" \
 
 # 5. Swagger UI
 # Abra http://localhost:${PORT:-8081}/swagger-ui.html
+
+# 6. Jaeger UI
+# Abra http://localhost:16686
 ```
 
 ## Stack Principal
@@ -85,7 +92,7 @@ curl -H "X-API-KEY: $(grep API_KEY .env | cut -d= -f2)" \
 ```mermaid
 mindmap
   root((Lead Enrichment API))
-    Java 17
+    Java 21
     Spring Boot 3.3
       Web REST
       JPA / Hibernate
@@ -94,26 +101,36 @@ mindmap
     PostgreSQL 16
     Serviços
       LeadService (orquestrador)
-      OpenSerpEnricher
+      OpenSerpEnricher (6 buscas)
       DomainEnricher
       LeadDeletionService
-      EncryptionService
-      DnsValidation
-      TechScraper
+      DnsValidation (5 tipos paralelo)
+      TechScraper (60+ assinaturas)
       SocialDiscovery
-      RDAP
-      OpenSERP
-      DataParser
-      EmailUtils
+      RdapService
+      OpenSerpSearch
+      EncryptionService
+    Observabilidade
+      OpenTelemetry
+      Jaeger (tracing)
+      Request/Response body capture
+    Otimizações
+      Cache Caffeine
+      HTTP Connection Pooling
+      Virtual Threads (Java 21)
+      Gzip Compression
+      Paginação
     Segurança
       AES-128-GCM
       SHA-256
       API Key
       Hard Delete
     Infra
-      Docker
       Docker Compose
-      OpenSERP
+      Jaeger
+      3x OpenSERP
+      Proxy rotation
+      Circuit breaker
 ```
 
 ## Licença

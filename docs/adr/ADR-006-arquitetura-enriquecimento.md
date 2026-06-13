@@ -22,32 +22,38 @@ Adotar uma arquitetura de **orquestração centralizada** com serviços especial
 LeadController
      │
      ▼
-LeadService (Orquestrador)
+LeadService (Orquestrador — Virtual Threads)
      │
-     ├──▶ OpenSerpEnricher
-     │       ├── OpenSerpSearch       (RestTemplate — Spring)
+     ├──▶ OpenSerpEnricher (6 buscas paralelas)
+     │       ├── searchPerson()         → busca geral
+     │       ├── searchDocuments()      → PDF, DOC, DOCX
+     │       ├── searchSocialMedia()    → redes sociais
+     │       ├── searchProfessional()   → LinkedIn, GitHub, CV
+     │       ├── searchContact()        → email, telefone
+     │       ├── searchNews()           → notícias
+     │       ├── OpenSerpSearch         (RestTemplate + HttpClient 5)
      │       └── SocialDiscoveryService (domínios sociais)
      │
      ├──▶ DomainEnricher
-     │       ├── DnsValidationService    (dnsjava)
-     │       ├── TechScraperService      (Jsoup + TechScraperProperties)
-     │       ├── SocialDiscoveryService  (Jsoup + SocialDiscoveryProperties)
-     │       └── RdapService            (HTTP — RestTemplate)
+     │       ├── DnsValidationService    (5 consultas DNS paralelas + cache Caffeine)
+     │       ├── TechScraperService      (Jsoup + 60+ assinaturas + cache)
+     │       ├── SocialDiscoveryService  (scraping paralelo + cache)
+     │       └── RdapService            (HTTP — Identity Digital / Registro.br)
      │
      └──▶ LeadDeletionService
-     │       └── LeadRepository (hard/soft delete)
+     │       └── LeadRepository (hard delete)
      │
-     📦 DataParser (util — parsers estáticos: data, email, nome)
+     📦 DataParser (util — email, phone, name parsers)
      📦 EmailUtils (util — mascaramento e hash)
-     📦 AppConfig  (RestTemplate Beans: padrão + openSerpRestTemplate)
+     📦 AppConfig  (RestTemplate + Connection Pooling + Caffeine caches)
 ```
 
 ### Serviços e Responsabilidades
 
 | Serviço | Tecnologia | Dados Obtidos | Isolamento |
 |---|---|---|---|
-| `OpenSerpEnricher` | — | Orquestra busca Google + processa resultados | `SerpProcessingContext` record |
-| `DomainEnricher` | — | Orquestra DNS + RDAP + scraping + sociais | `executeSafely` próprio |
+| `OpenSerpEnricher` | — | Orquestra 6 buscas Google paralelas + extrai dados (emails, telefones, menções) | `supplySearch()` com try-catch |
+| `DomainEnricher` | — | Orquestra DNS + RDAP + scraping + sociais com cache Caffeine | `executeSafely` próprio |
 | `LeadDeletionService` | Spring Data JPA | Hard delete (1 query) e soft delete | `parseNumericId` |
 | `DnsValidationService` | dnsjava 3.6 | MX, A, AAAA, CNAME, TXT | try-catch via `executeSafely` |
 | `TechScraperService` | Jsoup 1.17 | ~90 assinaturas de tecnologia (externalizadas em YAML), e-mails expostos, menções de nome | try-catch próprio |

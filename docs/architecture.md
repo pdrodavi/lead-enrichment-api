@@ -52,7 +52,7 @@ graph TB
 
 | Tecnologia | Versão | Função | Gerenciamento |
 |---|---|---|---|
-| **Java** | 17 | Runtime | — |
+| **Java** | **21** | Runtime (Virtual Threads) | — |
 | **Spring Boot** | 3.3.13 | Framework web, JPA, Actuator | Spring |
 | **Spring Data JPA** | 3.3.x | ORM + Hibernate 6.x | Spring |
 | **PostgreSQL** | 16 | Banco de dados relacional | Docker |
@@ -63,9 +63,9 @@ graph TB
 | **SpringDoc OpenAPI** | 2.5.0 | Swagger UI | Maven |
 | **Lombok** | - | Redução de boilerplate | Maven |
 
-> **Migrações relevantes:** OkHttp 4.12 foi removido — `RestTemplate` com connection pooling gerido pelo Spring substitui o cliente HTTP manual. Configurações de tecnologia e redes sociais foram externalizadas para `application.yml` via `@ConfigurationProperties`.
+> **Migrações relevantes:** OkHttp 4.12 foi removido — `RestTemplate` com connection pooling (Apache HttpClient 5) substitui o cliente HTTP manual. Migração Java 17 → 21 com Virtual Threads. Configurações de tecnologia, redes sociais e proxies OpenSERP externalizadas via `@ConfigurationProperties`.
 >
-> **Otimização de performance:** OpenSERP e DomainEnricher executam **em paralelo** via `CompletableFuture.allOf()`. Internamente, o `OpenSerpEnricher` também paraleliza as chamadas `searchPerson` e `searchDocuments`. Timeouts reduzidos: OpenSERP 30s, Tomcat 60s.
+> **Otimização de performance:** OpenSERP (6 frentes) + DomainEnricher (4 serviços) executam **em paralelo** via `CompletableFuture.allOf()` com pool de Virtual Threads. Consultas DNS paralelas (5 tipos simultâneos). Cache Caffeine (TTL 1h) para DNS, tecnologias e links sociais. HTTP Connection Pooling (200 conexões). Compressão Gzip. Paginação com `Page`/`Pageable`.
 
 ## Diagrama de Componentes
 
