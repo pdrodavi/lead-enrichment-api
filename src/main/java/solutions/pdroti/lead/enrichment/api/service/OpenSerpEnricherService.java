@@ -15,7 +15,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.stream.Stream;
@@ -130,42 +129,26 @@ public class OpenSerpEnricherService {
         processResults(news, name, ctx, socialDomains, "Notícias");
 
         // Merge com dados que o DomainEnricherService pode ter definido em paralelo
-        Set<String> mergedSocial = new LinkedHashSet<>(
-                lead.getSocialLinks() != null ? lead.getSocialLinks() : List.of());
-        mergedSocial.addAll(ctx.socialLinksFound());
-        lead.setSocialLinks(new ArrayList<>(mergedSocial));
-
-        Set<String> mergedUrls = new LinkedHashSet<>(
-                lead.getDiscoveredUrls() != null ? lead.getDiscoveredUrls() : List.of());
-        mergedUrls.addAll(ctx.allLinks());
-        lead.setDiscoveredUrls(new ArrayList<>(mergedUrls));
-
-        Set<String> mergedEmails = new LinkedHashSet<>(
-                lead.getExposedEmails() != null ? lead.getExposedEmails() : List.of());
-        mergedEmails.addAll(ctx.emails());
-        lead.setExposedEmails(new ArrayList<>(mergedEmails));
+        mergeField(lead, lead.getSocialLinks(), ctx.socialLinksFound(), lead::setSocialLinks);
+        mergeField(lead, lead.getDiscoveredUrls(), ctx.allLinks(), lead::setDiscoveredUrls);
+        mergeField(lead, lead.getExposedEmails(), ctx.emails(), lead::setExposedEmails);
         lead.setDorkFindings(lead.getExposedEmails().size());
-
-        Set<String> mergedPhones = new LinkedHashSet<>(
-                lead.getExposedPhones() != null ? lead.getExposedPhones() : List.of());
-        mergedPhones.addAll(ctx.phones());
-        lead.setExposedPhones(new ArrayList<>(mergedPhones));
-
-        Set<String> mergedMentions = new LinkedHashSet<>(
-                lead.getNameMentions() != null ? lead.getNameMentions() : List.of());
-        mergedMentions.addAll(ctx.nameMentions());
-        lead.setNameMentions(new ArrayList<>(mergedMentions));
-
-        Set<String> mergedDocs = new LinkedHashSet<>(
-                lead.getFoundDocuments() != null ? lead.getFoundDocuments() : List.of());
-        mergedDocs.addAll(ctx.foundDocs());
-        lead.setFoundDocuments(new ArrayList<>(mergedDocs));
+        mergeField(lead, lead.getExposedPhones(), ctx.phones(), lead::setExposedPhones);
+        mergeField(lead, lead.getNameMentions(), ctx.nameMentions(), lead::setNameMentions);
+        mergeField(lead, lead.getFoundDocuments(), ctx.foundDocs(), lead::setFoundDocuments);
         lead.setOpenSerpRawData(serializeResult(
                 new SerpSearchResult(name, ctx.matchedItems().size(), ctx.matchedItems())));
 
         log.info("OpenSERP: {} links, {} sociais, {} e-mails, {} telefones, {} menções, {} docs, {} estruturados",
                 ctx.allLinks().size(), ctx.socialLinksFound().size(), ctx.emails().size(),
                 ctx.phones().size(), ctx.nameMentions().size(), ctx.foundDocs().size(), ctx.matchedItems().size());
+    }
+
+    /** Mescla duas coleções usando LinkedHashSet para evitar duplicatas e race conditions. */
+    private void mergeField(Lead lead, List<String> current, java.util.Collection<String> newData, java.util.function.Consumer<List<String>> setter) {
+        java.util.Set<String> merged = new LinkedHashSet<>(current != null ? current : List.of());
+        if (newData != null) merged.addAll(newData);
+        setter.accept(new ArrayList<>(merged));
     }
 
     /** Executa um supplier com try-catch, retornando array vazio em caso de erro. */

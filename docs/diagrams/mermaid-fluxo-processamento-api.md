@@ -117,7 +117,7 @@ flowchart TD
     style FULL_FLOW fill:#ebfbee,stroke:#2f9e44,stroke-width:2px
 ```
 
-> Desde a refatoração, o `LeadService` passou a ser um orquestrador puro (~140 linhas) que delega para `OpenSerpEnricher` (busca Google), `DomainEnricher` (DNS + RDAP + scraping + sociais) e `LeadDeletionService` (hard delete em 1 query). O fluxo completo de tecnologias + verificação de nome é feito em **uma única requisição HTTP** via `scrapeTechnologiesAndCheckName()`. O `OpenSerpSearch` usa `RestTemplate` (gerenciado pelo Spring) em vez de `OkHttpClient` manual.
+> Desde a refatoração, o `LeadService` passou a ser um orquestrador puro (~140 linhas) que delega para `OpenSerpEnricherService` (busca Google), `DomainEnricherService` (DNS + RDAP + scraping + sociais) e `LeadDeletionService` (hard delete em 1 query). O fluxo completo de tecnologias + verificação de nome é feito em **uma única requisição HTTP** via `scrapeTechnologiesAndCheckName()`. O `OpenSerpSearchService` usa `RestTemplate` (gerenciado pelo Spring) em vez de `OkHttpClient` manual.
 
 ## Diagrama de Contexto da API
 

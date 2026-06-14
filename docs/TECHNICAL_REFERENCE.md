@@ -138,13 +138,15 @@ lead-enrichment-api/
     │   ├── SocialDiscoveryService.java  # Descoberta de redes sociais (Jsoup)
     │   ├── RdapService.java             # Consulta RDAP (HTTP)
     │   ├── OpenSerpSearchService.java          # API OpenSERP (RestTemplate + cache L1+L2)
+    │   ├── DotComScrapingService.java    # Scraping .com/.br (redes sociais, telefones, e-mails)
     │   ├── RedisCacheService.java       # Cache L2 Redis (async set + fallback)
     │   └── EncryptionService.java       # AES-128-GCM
     └── util/
         ├── ContentTracker.java          # Hash SHA-256 para detecção de mudanças
         ├── EmailUtils.java              # SHA-256 + mascaramento LGPD
         ├── DataParser.java              # Parsers estáticos + COMMON_EMAIL_PROVIDERS
-        └── ErrorMatcher.java            # Interface funcional para classificação de erros
+        ├── ErrorMatcher.java            # Interface funcional para classificação de erros
+        └── EnrichmentSnapshotManager.java # Snapshot/restore de campos em reenriquecimento
 
     enums/
         └── ScrapeError.java             # Classificação de erros de scraping
@@ -174,16 +176,15 @@ lead-enrichment-api/
 
 | Serviço | Tecnologia | Função | Cache |
 |---|---|---|---|
-| `LeadService` | Spring `@Service` | Orquestrador: coordena `OpenSerpEnricher` + `DomainEnricher` em paralelo | — |
+| `LeadService` | Spring `@Service` | Orquestrador: coordena `OpenSerpEnricherService` + `DomainEnricherService` em paralelo | — |
+| `DotComScrapingService` | Jsoup + RestTemplate | Scraping de sites .com/.br sem domínio: sociais, telefones, e-mails | — |
 | `RedisCacheService` | Redis (Lettuce) | Cache L2 distribuído (get síncrono, setAsync fire-and-forget, fallback Caffeine) | Redis |
-| `OpenSerpEnricher` | Gson + RestTemplate | Busca Google via OpenSERP (6 frentes, merge seguro) | — |
-| `DomainEnricher` | Diversos | Orquestra DNS + TechScraper + Social + RDAP | — |
+| `OpenSerpEnricherService` | Gson + RestTemplate | Busca Google via OpenSERP (6 frentes, mergeField seguro) | — |
+| `DomainEnricherService` | Diversos | Orquestra DNS + TechScraper + Social + RDAP | — |
 | `DnsValidationService` | dnsjava | Consulta 5 tipos de registro DNS (MX, A, AAAA, CNAME, TXT) em paralelo | Caffeine 1h |
 | `TechScraperService` | Jsoup | Detecta tecnologias do site (~90 assinaturas) + verifica menção de nome | Caffeine 1h |
 | `SocialDiscoveryService` | Jsoup | Descobre links de redes sociais (31 plataformas) + faz scraping de perfis | Caffeine 1h (2 caches) |
 | `RdapService` | HTTP (HttpClient) | Consulta RDAP na Identity Digital e Registro.br | Caffeine 1h |
-| `OpenSerpSearch` | RestTemplate | Interface com API OpenSERP self-hosted + circuit breaker + rate limiting | Caffeine 30min + Redis L2 |
-| `RedisCacheService` | Redis (Lettuce) | Cache L2 distribuído com async set e fallback | Redis |
 | `EncryptionService` | AES-128-GCM | Criptografia/descriptografia de e-mails | — |
 | `LeadDeletionService` | Spring Data JPA | Hard delete em 1 query (`deleteById`) | — |
 
@@ -201,7 +202,7 @@ lead-enrichment-api/
 | `SerpResultItem` | Record | Item individual: title, url, snippet, domain, fileType |
 | `SocialProfileData` | Record | Perfil social: platform, profileUrl, title, description + `toSummary()` |
 | `ScrapedPageData` | Record | Dados de página: title, description, language, favicon, canonicalUrl, themeColor, charset, technologies, Open Graph, Twitter Cards, h1, socialLinks |
-| `LeadResponseSummary` | Record | Resumo leve para listagens: sem parse de JSONs brutos, apenas contagens |
+| `LeadResponseSummary` | Record | Resumo leve para listagens: sem parse de JSONs brutos, apenas contagens
 
 ---
 
@@ -341,10 +342,10 @@ openSerpRawData .....  →  discovery.serpRawData (se presente)
 
 ### 5.3 Comportamentos Especiais
 
-- **Snapshot/Restore:** Se o reenriquecimento falhar (ex: CAPTCHA no OpenSERP), os dados anteriores são preservados automaticamente via snapshot de todos os campos.
+- **Snapshot/Restore:** Se o reenriquecimento falhar (ex: CAPTCHA no OpenSERP), os dados anteriores são preservados automaticamente via `EnrichmentSnapshotManager`. Responsabilidade extraída do `LeadService` para classe dedicada.
+- **Scraping sem Domínio:** Quando nenhum domínio é informado, `DotComScrapingService` percorre sites `.com`/`.com.br` encontrados pelo OpenSERP para extrair telefones, e-mails e redes sociais.
 - **Deduplicação:** `nameMentions` são deduplicados por URL; `foundDocuments` e `discoveredUrls` são deduplicados mantendo a ordem; itens do OpenSERP são deduplicados por URL.
 - **Filtragem de Links Sociais:** `socialLinks` são filtrados para manter apenas URLs que contenham o nome ou e-mail exato da pessoa.
-- **Busca sem Domínio:** Quando nenhum domínio é informado, o sistema busca telefones, e-mails e redes sociais nos sites `.com`/`.com.br` encontrados pelo OpenSERP.
 
 ---
 

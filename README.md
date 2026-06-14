@@ -90,8 +90,8 @@ Aprimoramentos implementados ao longo de ciclos de revisão, organizados por dom
 - Campo `exposedPhones` adicionado ao modelo `Lead` e DTO `DiscoveryData` (telefones expostos)
 - Deduplicação de `nameMentions` por URL, `foundDocuments`/`discoveredUrls` e itens OpenSERP
 - Filtragem de `socialLinks` por nome/e-mail da pessoa (`filterSocialLinksByPerson`)
-- Snapshot/Restore automático: se o reenriquecimento falhar (ex: CAPTCHA), dados anteriores são preservados
-- Busca em sites `.com`/`.com.br` via OpenSERP quando nenhum domínio é informado (`scrapeDotComSites`)
+- Snapshot/Restore automático via `EnrichmentSnapshotManager`: se o reenriquecimento falhar (ex: CAPTCHA), dados anteriores são preservados
+- Busca em sites `.com`/`.com.br` via `DotComScrapingService` quando nenhum domínio é informado
 
 ---
 

@@ -50,17 +50,11 @@ public class RedisCacheService {
      * @return valor string do cache, ou null se não encontrado / indisponível
      */
     public String get(String key) {
-        if (!redisAvailable) return null;
-        try {
+        return execute(key, "get", () -> {
             String cached = redis.opsForValue().get(buildKey(key));
-            if (cached != null) {
-                log.debug("Redis L2 hit: {}", key);
-            }
+            if (cached != null) log.debug("Redis L2 hit: {}", key);
             return cached;
-        } catch (Exception e) {
-            log.debug("Redis L2 get falhou: {} - {}", key, e.getMessage());
-            return null;
-        }
+        });
     }
 
     /**
@@ -73,25 +67,35 @@ public class RedisCacheService {
      */
     public void setAsync(String key, long ttl, String value) {
         if (!redisAvailable || value == null) return;
-        CompletableFuture.runAsync(() -> {
-            try {
+        CompletableFuture.runAsync(() ->
+            execute(key, "set", () -> {
                 redis.opsForValue().set(buildKey(key), value, Duration.ofSeconds(ttl));
-                log.debug("Redis L2 set: {}", key);
-            } catch (Exception e) {
-                log.debug("Redis L2 set falhou: {} - {}", key, e.getMessage());
-            }
-        });
+                return null;
+            })
+        );
     }
 
     /**
      * Remove uma chave do cache Redis.
      */
     public void evict(String key) {
-        if (!redisAvailable) return;
-        try {
+        execute(key, "evict", () -> {
             redis.delete(buildKey(key));
+            return null;
+        });
+    }
+
+    /**
+     * Executa uma operação Redis com fallback silencioso em caso de erro.
+     * Se Redis não estiver disponível, retorna null sem executar.
+     */
+    private <T> T execute(String key, String operation, java.util.function.Supplier<T> action) {
+        if (!redisAvailable) return null;
+        try {
+            return action.get();
         } catch (Exception e) {
-            log.debug("Redis L2 evict falhou: {} - {}", key, e.getMessage());
+            log.debug("Redis L2 {} falhou: {} - {}", operation, key, e.getMessage());
+            return null;
         }
     }
 

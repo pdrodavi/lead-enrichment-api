@@ -271,7 +271,7 @@ lead-enrichment-api/
         │   ├── service/
         │   │   ├── DnsValidationService.java
         │   │   ├── LeadService.java
-        │   │   ├── OpenSerpSearch.java
+        │   │   ├── OpenSerpSearchService.java
         │   │   ├── RdapService.java
         │   │   ├── SocialDiscoveryService.java
         │   │   └── TechScraperService.java

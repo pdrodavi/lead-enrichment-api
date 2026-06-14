@@ -72,7 +72,7 @@ Aprimoramentos implementados ao longo de ciclos de revisão, organizados por dom
 - Merge seguro contra race condition com cópia defensiva em cache
 
 ### Refatoração da Arquitetura
-- Extração de responsabilidades: `LeadService` decomposto em `OpenSerpEnricher`, `DomainEnricher`, `LeadDeletionService`, `RedisCacheService`
+- Extração de responsabilidades: `LeadService` decomposto em `OpenSerpEnricherService`, `DomainEnricherService`, `LeadDeletionService`, `RedisCacheService`
 - Eliminação de N+1 com `@Fetch(FetchMode.SUBSELECT)`, lock otimista com `@Version` e `@BatchSize`
 
 ### Manutenibilidade

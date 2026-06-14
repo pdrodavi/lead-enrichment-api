@@ -13,24 +13,18 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
-import java.util.regex.Matcher;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.web.client.RestTemplate;
 
 /**
  * Orquestrador do pipeline de enriquecimento de leads.
@@ -69,9 +63,8 @@ public class LeadService {
     private final LeadRepository leadRepository;
     private final OpenSerpEnricherService openSerpEnricherService;
     private final DomainEnricherService domainEnricher;
-    private final SocialDiscoveryService socialDiscoveryService;
+    private final DotComScrapingService dotComScrapingService;
     private final TransactionTemplate transactionTemplate;
-    private final RestTemplate restTemplate;
 
     @Qualifier("enrichmentExecutor")
     private final Executor enrichmentExecutor;
@@ -205,32 +198,7 @@ public class LeadService {
 
         // Preserva dados antigos antes de resetar — se o reenriquecimento
         // retornar vazio (ex: CAPTCHA), os dados anteriores são mantidos
-        // (HashMap permite valores null, ao contrário de Map.of/Map.entry)
-        var oldSnapshot = new java.util.HashMap<String, Object>();
-        oldSnapshot.put("dnsMxRecords", lead.getDnsMxRecords());
-        oldSnapshot.put("dnsARecords", lead.getDnsARecords());
-        oldSnapshot.put("dnsAaaaRecords", lead.getDnsAaaaRecords());
-        oldSnapshot.put("dnsCnameRecords", lead.getDnsCnameRecords());
-        oldSnapshot.put("dnsTxtRecords", lead.getDnsTxtRecords());
-        oldSnapshot.put("technologies", lead.getTechnologies());
-        oldSnapshot.put("socialLinks", lead.getSocialLinks());
-        oldSnapshot.put("socialProfileSummaries", lead.getSocialProfileSummaries());
-        oldSnapshot.put("exposedEmails", lead.getExposedEmails());
-        oldSnapshot.put("exposedPhones", lead.getExposedPhones());
-        oldSnapshot.put("nameMentions", lead.getNameMentions());
-        oldSnapshot.put("foundDocuments", lead.getFoundDocuments());
-        oldSnapshot.put("discoveredUrls", lead.getDiscoveredUrls());
-        oldSnapshot.put("openSerpRawData", lead.getOpenSerpRawData());
-        oldSnapshot.put("rdapRawData", lead.getRdapRawData());
-        oldSnapshot.put("rdapRegistrar", lead.getRdapRegistrar());
-        oldSnapshot.put("rdapRegistrantName", lead.getRdapRegistrantName());
-        oldSnapshot.put("rdapRegistrantEmail", lead.getRdapRegistrantEmail());
-        oldSnapshot.put("rdapRegistrationDate", lead.getRdapRegistrationDate());
-        oldSnapshot.put("rdapExpirationDate", lead.getRdapExpirationDate());
-        oldSnapshot.put("rdapNameservers", lead.getRdapNameservers());
-        oldSnapshot.put("rdapStatus", lead.getRdapStatus());
-        oldSnapshot.put("rdapTaxpayerId", lead.getRdapTaxpayerId());
-        oldSnapshot.put("rdapSource", lead.getRdapSource());
+        var snapshot = EnrichmentSnapshotManager.takeSnapshot(lead);
 
         domainEnricher.resetEnrichmentData(lead);
 
@@ -258,7 +226,7 @@ public class LeadService {
         // Quando nenhum domínio foi informado, busca redes sociais, telefones
         // e e-mails nos sites .com/.com.br encontrados pelo OpenSERP
         if (!StringUtils.hasText(domain)) {
-            scrapeDotComSites(lead, name);
+            dotComScrapingService.scrapeDotComSites(lead, name);
         }
 
         // Filtra socialLinks para manter apenas os que correspondem ao
@@ -269,30 +237,7 @@ public class LeadService {
 
         // Se o reenriquecimento não encontrou dados novos (ex: CAPTCHA),
         // restaura os dados anteriores para não perder informação
-        restoreIfEmpty(lead, "dnsMxRecords", oldSnapshot, list -> lead.setDnsMxRecords((List<String>) list));
-        restoreIfEmpty(lead, "dnsARecords", oldSnapshot, list -> lead.setDnsARecords((List<String>) list));
-        restoreIfEmpty(lead, "dnsAaaaRecords", oldSnapshot, list -> lead.setDnsAaaaRecords((List<String>) list));
-        restoreIfEmpty(lead, "dnsCnameRecords", oldSnapshot, list -> lead.setDnsCnameRecords((List<String>) list));
-        restoreIfEmpty(lead, "dnsTxtRecords", oldSnapshot, list -> lead.setDnsTxtRecords((List<String>) list));
-        restoreIfEmpty(lead, "technologies", oldSnapshot, list -> lead.setTechnologies((List<String>) list));
-        restoreIfEmpty(lead, "socialLinks", oldSnapshot, list -> lead.setSocialLinks((List<String>) list));
-        restoreIfEmpty(lead, "socialProfileSummaries", oldSnapshot, list -> lead.setSocialProfileSummaries((List<String>) list));
-        restoreIfEmpty(lead, "exposedEmails", oldSnapshot, list -> lead.setExposedEmails((List<String>) list));
-        restoreIfEmpty(lead, "exposedPhones", oldSnapshot, list -> lead.setExposedPhones((List<String>) list));
-        restoreIfEmpty(lead, "nameMentions", oldSnapshot, list -> lead.setNameMentions((List<String>) list));
-        restoreIfEmpty(lead, "foundDocuments", oldSnapshot, list -> lead.setFoundDocuments((List<String>) list));
-        restoreIfEmpty(lead, "discoveredUrls", oldSnapshot, list -> lead.setDiscoveredUrls((List<String>) list));
-        restoreIfEmpty(lead, "openSerpRawData", oldSnapshot, val -> lead.setOpenSerpRawData((String) val));
-        restoreIfEmpty(lead, "rdapRawData", oldSnapshot, val -> lead.setRdapRawData((String) val));
-        restoreIfEmpty(lead, "rdapRegistrar", oldSnapshot, val -> lead.setRdapRegistrar((String) val));
-        restoreIfEmpty(lead, "rdapRegistrantName", oldSnapshot, val -> lead.setRdapRegistrantName((String) val));
-        restoreIfEmpty(lead, "rdapRegistrantEmail", oldSnapshot, val -> lead.setRdapRegistrantEmail((String) val));
-        restoreIfEmpty(lead, "rdapRegistrationDate", oldSnapshot, val -> lead.setRdapRegistrationDate((LocalDateTime) val));
-        restoreIfEmpty(lead, "rdapExpirationDate", oldSnapshot, val -> lead.setRdapExpirationDate((LocalDateTime) val));
-        restoreIfEmpty(lead, "rdapNameservers", oldSnapshot, list -> lead.setRdapNameservers((List<String>) list));
-        restoreIfEmpty(lead, "rdapStatus", oldSnapshot, list -> lead.setRdapStatus((List<String>) list));
-        restoreIfEmpty(lead, "rdapTaxpayerId", oldSnapshot, val -> lead.setRdapTaxpayerId((String) val));
-        restoreIfEmpty(lead, "rdapSource", oldSnapshot, val -> lead.setRdapSource((String) val));
+        snapshot.restoreIfEmpty(lead);
 
         lead.setUpdatedAt(LocalDateTime.now());
 
@@ -318,7 +263,7 @@ public class LeadService {
      * @param email       e-mail completo da pessoa
      * @return lista filtrada contendo apenas links que correspondem à pessoa
      */
-    static List<String> filterSocialLinksByPerson(List<String> socialLinks, String name, String email) {
+    private static List<String> filterSocialLinksByPerson(List<String> socialLinks, String name, String email) {
         if (socialLinks == null || socialLinks.isEmpty()) return new ArrayList<>();
         if (name == null && email == null) return new ArrayList<>();
 
@@ -373,170 +318,6 @@ public class LeadService {
                     return searchTerms.stream().anyMatch(lowerLink::contains);
                 })
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-    }
-
-    /**
-     * Restaura um campo do lead a partir do snapshot anterior se o valor
-     * atual estiver vazio (null, lista vazia, string vazia).
-     * <p>
-     * Garante que reenriquecimentos com falha (ex: CAPTCHA) não destruam
-     * dados que já haviam sido enriquecidos anteriormente.
-     */
-    @SuppressWarnings("unchecked")
-    private void restoreIfEmpty(Lead lead, String fieldName, Map<String, Object> snapshot, Consumer<Object> setter) {
-        Object current = switch (fieldName) {
-            case "openSerpRawData", "rdapRawData", "rdapRegistrar", "rdapRegistrantName",
-                 "rdapRegistrantEmail", "rdapTaxpayerId", "rdapSource" -> {
-                String val = (String) switch (fieldName) {
-                    case "openSerpRawData" -> lead.getOpenSerpRawData();
-                    case "rdapRawData" -> lead.getRdapRawData();
-                    case "rdapRegistrar" -> lead.getRdapRegistrar();
-                    case "rdapRegistrantName" -> lead.getRdapRegistrantName();
-                    case "rdapRegistrantEmail" -> lead.getRdapRegistrantEmail();
-                    case "rdapTaxpayerId" -> lead.getRdapTaxpayerId();
-                    case "rdapSource" -> lead.getRdapSource();
-                    default -> null;
-                };
-                yield val;
-            }
-            case "rdapRegistrationDate", "rdapExpirationDate" -> {
-                LocalDateTime val = switch (fieldName) {
-                    case "rdapRegistrationDate" -> lead.getRdapRegistrationDate();
-                    case "rdapExpirationDate" -> lead.getRdapExpirationDate();
-                    default -> null;
-                };
-                yield val;
-            }
-            default -> {
-                List<String> val = switch (fieldName) {
-                    case "dnsMxRecords" -> lead.getDnsMxRecords();
-                    case "dnsARecords" -> lead.getDnsARecords();
-                    case "dnsAaaaRecords" -> lead.getDnsAaaaRecords();
-                    case "dnsCnameRecords" -> lead.getDnsCnameRecords();
-                    case "dnsTxtRecords" -> lead.getDnsTxtRecords();
-                    case "technologies" -> lead.getTechnologies();
-                    case "socialLinks" -> lead.getSocialLinks();
-                    case "socialProfileSummaries" -> lead.getSocialProfileSummaries();
-                    case "exposedEmails" -> lead.getExposedEmails();
-                    case "exposedPhones" -> lead.getExposedPhones();
-                    case "nameMentions" -> lead.getNameMentions();
-                    case "foundDocuments" -> lead.getFoundDocuments();
-                    case "discoveredUrls" -> lead.getDiscoveredUrls();
-                    case "rdapNameservers" -> lead.getRdapNameservers();
-                    case "rdapStatus" -> lead.getRdapStatus();
-                    default -> null;
-                };
-                yield val;
-            }
-        };
-
-        boolean isEmpty = current == null
-                || (current instanceof String s && s.isBlank())
-                || (current instanceof List<?> l && l.isEmpty());
-
-        if (isEmpty) {
-            Object oldValue = snapshot.get(fieldName);
-            if (oldValue != null) {
-                setter.accept(oldValue);
-                log.debug("Campo '{}' restaurado do snapshot anterior (reenriquecimento não trouxe dados)", fieldName);
-            }
-        }
-    }
-
-    /**
-     * Quando o domínio não foi informado, percorre os URLs descobertos pelo
-     * OpenSERP que terminam com .com, .com.br ou .br e faz scraping de cada um
-     * para extrair redes sociais, telefones e e-mails.
-     * <p>
-     * Os dados são mesclados com os resultados já obtidos pelo OpenSERP.
-     */
-    private void scrapeDotComSites(Lead lead, String name) {
-        List<String> urls = lead.getDiscoveredUrls();
-        if (urls == null || urls.isEmpty()) {
-            log.info("Nenhum URL descoberto pelo OpenSERP para scraping .com/.com.br/.br");
-            return;
-        }
-
-        // Filtra apenas URLs de domínios .com, .com.br ou .br
-        List<String> dotComUrls = urls.stream()
-                .filter(url -> {
-                    String lower = url.toLowerCase();
-                    try {
-                        String host = new java.net.URL(lower).getHost();
-                        return host != null && (host.endsWith(".com") || host.endsWith(".br"));
-                    } catch (Exception e) {
-                        return false;
-                    }
-                })
-                .distinct()
-                .limit(10) // limita a 10 sites para não sobrecarregar
-                .toList();
-
-        if (dotComUrls.isEmpty()) {
-            log.info("Nenhum site .com/.com.br/.br encontrado entre os URLs descobertos");
-            return;
-        }
-
-        log.info("Scraping de {} site(s) .com/.com.br/.br para redes sociais, telefones e e-mails", dotComUrls.size());
-
-        Set<String> mergedSocialLinks = new LinkedHashSet<>(
-                lead.getSocialLinks() != null ? lead.getSocialLinks() : List.of());
-        Set<String> mergedEmails = new LinkedHashSet<>(
-                lead.getExposedEmails() != null ? lead.getExposedEmails() : List.of());
-        Set<String> mergedPhones = new LinkedHashSet<>(
-                lead.getExposedPhones() != null ? lead.getExposedPhones() : List.of());
-
-        for (String url : dotComUrls) {
-            try {
-                // Extrai o domínio da URL para usar no SocialDiscoveryService
-                String domainForSocial = new java.net.URL(url).getHost();
-
-                // 1. Redes sociais — usa o serviço especializado
-                List<String> socialLinks = socialDiscoveryService.discoverSocialLinks(domainForSocial);
-                if (socialLinks != null) {
-                    mergedSocialLinks.addAll(socialLinks);
-                }
-
-                // 2. Telefones e e-mails — faz fetch do HTML e extrai via regex
-                String html = restTemplate.getForObject(url, String.class);
-                if (html != null && !html.isBlank()) {
-                    Document doc = Jsoup.parse(html);
-                    String pageText = doc.text();
-
-                    // Extrai e-mails do texto da página
-                    Matcher emailMatcher = DataParser.EMAIL_PATTERN.matcher(pageText);
-                    while (emailMatcher.find()) {
-                        String foundEmail = emailMatcher.group().toLowerCase();
-                        if (!foundEmail.contains("example.com")) {
-                            mergedEmails.add(foundEmail);
-                        }
-                    }
-
-                    // Extrai telefones do texto da página
-                    Matcher phoneMatcher = DataParser.PHONE_PATTERN.matcher(pageText);
-                    while (phoneMatcher.find()) {
-                        String phone = phoneMatcher.group().strip();
-                        String digits = phone.replaceAll("\\D", "");
-                        if (digits.length() >= 10 && digits.length() <= 15) {
-                            mergedPhones.add(phone);
-                        }
-                    }
-                }
-
-                log.debug("Scraping concluído para {}", url);
-            } catch (Exception e) {
-                log.debug("Falha ao scrapear {}: {}", url, e.getMessage());
-            }
-        }
-
-        // Atualiza o lead com dados mesclados
-        lead.setSocialLinks(new ArrayList<>(mergedSocialLinks));
-        lead.setExposedEmails(new ArrayList<>(mergedEmails));
-        lead.setExposedPhones(new ArrayList<>(mergedPhones));
-        lead.setDorkFindings(lead.getExposedEmails().size());
-
-        log.info("Scraping .com/.com.br concluído: {} sociais, {} e-mails, {} telefones",
-                mergedSocialLinks.size(), mergedEmails.size(), mergedPhones.size());
     }
 
     private Lead createNewLead(String email, String domain, String name) {

@@ -181,7 +181,7 @@ Lead Enrichment API
 │                                             │
 │                                    LeadService (orquestrador)
 │                                      │              │
-│                              OpenSerpEnricher  DomainEnricher
+│                              OpenSerpEnricherService  DomainEnricherService
 │                              (sempre executa)  (se houver domínio)
 │                                      │              │
 │                              ┌──── OpenSERP ──┐  ┌── DNS ──┐
@@ -218,8 +218,8 @@ Lead Enrichment API
    c. Busca lead existente por hash
    d. Limpa dados de enriquecimento anterior
    e. DISPARA EM PARALELO:
-      - OpenSerpEnricher (sempre)
-      - DomainEnricher (se houver domínio)
+      - OpenSerpEnricherService (sempre)
+      - DomainEnricherService (se houver domínio)
    f. Persiste no PostgreSQL (e-mail criptografado AES-GCM)
 5. LeadController monta a resposta com email mascarado
 6. Cliente recebe 200 OK + List<LeadResponse>
