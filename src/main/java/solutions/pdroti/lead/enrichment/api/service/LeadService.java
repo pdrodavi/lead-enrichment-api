@@ -170,6 +170,17 @@ public class LeadService {
         Lead lead = findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Lead não encontrado: " + id));
 
+        // Verifica se o novo e-mail já pertence a OUTRO lead (evita ConstraintViolation no email_hash)
+        if (email != null && !email.equals(lead.getEmail())) {
+            String newHash = EmailUtils.hash(email);
+            leadRepository.findByEmailHash(newHash)
+                    .filter(existing -> !existing.getId().equals(lead.getId()))
+                    .ifPresent(existing -> {
+                        throw new IllegalArgumentException(
+                                "E-mail já cadastrado para outro lead: ID=" + existing.getId());
+                    });
+        }
+
         lead.setName(name);
         lead.setEmail(email);
         lead.setDomain(domain);
