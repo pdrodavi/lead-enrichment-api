@@ -130,6 +130,7 @@ classDiagram
         +List~String~ socialLinks
         +List~String~ socialProfileSummaries
         +List~String~ exposedEmails
+        +List~String~ exposedPhones
         +int dorkFindings
         +List~String~ nameMentions
         +String rdapRawData

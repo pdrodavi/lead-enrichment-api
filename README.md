@@ -83,8 +83,15 @@ Aprimoramentos implementados ao longo de ciclos de revisão, organizados por dom
 
 ### Manutenibilidade
 - Adoção de `@Getter`/`@Setter` no modelo `Lead`, `@ConfigurationPropertiesScan`, `@EnableCaching`, `@EnableSpringDataWebSupport(VIA_DTO)`
-- Cache declarativo com `@Cacheable("enrich-result")` e `@CacheEvict` manual em atualizações
+- Cache declarativo com `@Cacheable("enrich-result")` e `@CacheEvict` manual em atualizações e exclusões
 - 10 ADRs documentando decisões arquiteturais
+
+### Enriquecimento de Dados
+- Campo `exposedPhones` adicionado ao modelo `Lead` e DTO `DiscoveryData` (telefones expostos)
+- Deduplicação de `nameMentions` por URL, `foundDocuments`/`discoveredUrls` e itens OpenSERP
+- Filtragem de `socialLinks` por nome/e-mail da pessoa (`filterSocialLinksByPerson`)
+- Snapshot/Restore automático: se o reenriquecimento falhar (ex: CAPTCHA), dados anteriores são preservados
+- Busca em sites `.com`/`.com.br` via OpenSERP quando nenhum domínio é informado (`scrapeDotComSites`)
 
 ---
 

@@ -11,7 +11,7 @@ info:
     - Presença em redes sociais (33 plataformas)
     - Dados de registro do domínio via RDAP (Identity Digital + Registro.br)
     - Resultados de busca no Google via OpenSERP
-    - E-mails expostos publicamente e menções ao nome
+    - E-mails e telefones expostos publicamente e menções ao nome
 
     Todos os endpoints (exceto actuator e Swagger) exigem autenticação via header `X-API-KEY`.
   version: "1.0"
@@ -548,6 +548,12 @@ components:
             type: "string"
           description: "E-mails expostos encontrados publicamente"
           example: ["joao.silva@exemplo.com"]
+        exposedPhones:
+          type: "array"
+          items:
+            type: "string"
+          description: "Telefones expostos encontrados publicamente"
+          example: ["+55 11 99999-9999"]
         nameMentions:
           type: "array"
           items:

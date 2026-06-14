@@ -87,6 +87,7 @@ Os campos são organizados em **sub-records** para melhor legibilidade: `dns`, `
         "LinkedIn: Software Engineer na Empresa X"
       ],
       "exposedEmails": ["joao@exemplo.com"],
+      "exposedPhones": ["+55 11 99999-9999"],
       "nameMentions": ["Nome completo encontrado em: https://exemplo.com"],
       "nameMentionUrls": ["https://exemplo.com"],
       "dorkFindings": 5,
@@ -364,6 +365,7 @@ LeadResponse
 │   ├── socialLinks: List<String>
 │   ├── socialProfileSummaries: List<String>
 │   ├── exposedEmails: List<String>
+│   ├── exposedPhones: List<String>
 │   ├── nameMentions: List<String>
 │   ├── nameMentionUrls: List<String>
 │   ├── dorkFindings: int
@@ -403,6 +405,7 @@ LeadResponse
 | `socialLinks` | `@ElementCollection` | Links de redes sociais |
 | `socialProfileSummaries` | `@ElementCollection` | Resumo dos perfis sociais |
 | `exposedEmails` | `@ElementCollection` | E-mails expostos |
+| `exposedPhones` | `@ElementCollection` | Telefones expostos |
 | `dorkFindings` | int | Total de achados |
 | `nameMentions` | `@ElementCollection` | Menções ao nome |
 | `createdAt` | LocalDateTime | Data de criação |

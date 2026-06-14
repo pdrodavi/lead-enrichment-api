@@ -130,14 +130,14 @@ lead-enrichment-api/
     │   └── LeadRepository.java          # Spring Data JPA
     ├── service/
     │   ├── LeadService.java             # Orquestrador principal
-    │   ├── OpenSerpEnricher.java        # Enriquecimento via OpenSERP
-    │   ├── DomainEnricher.java          # DNS + RDAP + scraping + sociais
+    │   ├── OpenSerpEnricherService.java        # Enriquecimento via OpenSERP
+    │   ├── DomainEnricherService.java          # DNS + RDAP + scraping + sociais
     │   ├── LeadDeletionService.java     # Hard delete
     │   ├── DnsValidationService.java    # Consultas DNS (dnsjava)
     │   ├── TechScraperService.java      # Detecção de tecnologias (Jsoup)
     │   ├── SocialDiscoveryService.java  # Descoberta de redes sociais (Jsoup)
     │   ├── RdapService.java             # Consulta RDAP (HTTP)
-    │   ├── OpenSerpSearch.java          # API OpenSERP (RestTemplate + cache L1+L2)
+    │   ├── OpenSerpSearchService.java          # API OpenSERP (RestTemplate + cache L1+L2)
     │   ├── RedisCacheService.java       # Cache L2 Redis (async set + fallback)
     │   └── EncryptionService.java       # AES-128-GCM
     └── util/
@@ -310,12 +310,12 @@ A entidade `Lead` possui ~40 campos organizados em grupos:
 | **DNS** | `dnsMxRecords`, `dnsARecords`, `dnsAaaaRecords`, `dnsCnameRecords`, `dnsTxtRecords` | Registros DNS (LAZY) |
 | **Tecnologias** | `technologies` | Tecnologias detectadas (LAZY) |
 | **Social** | `socialLinks`, `socialProfileSummaries` | Redes sociais (LAZY) |
-| **Dorks** | `exposedEmails`, `dorkFindings`, `nameMentions` | Info exposta (LAZY) |
+| **Dorks** | `exposedEmails`, `exposedPhones`, `dorkFindings`, `nameMentions` | Info exposta (LAZY) |
 | **RDAP** | `rdapRegistrar`, `rdapRegistrantName`, `rdapRegistrationDate`, etc. | Registro de domínio |
 | **OpenSERP** | `openSerpRawData`, `foundDocuments`, `discoveredUrls` | Busca Google |
 | **LGPD** | `consentGiven`, `consentDate`, `dataRetentionUntil`, `deletedAt` | Compliance |
 
-> `@ElementCollection(fetch = FetchType.LAZY)` + `@Fetch(FetchMode.SUBSELECT)` são usados em todas as 14 coleções para evitar N+1 sem causar `MultipleBagFetchException`.
+> `@ElementCollection(fetch = FetchType.LAZY)` + `@Fetch(FetchMode.SUBSELECT)` são usados em todas as 15 coleções para evitar N+1 sem causar `MultipleBagFetchException`.
 > `@BatchSize(size = 10)` otimiza o carregamento de coleções LAZY.
 > `@Version` com `@Builder.Default private Long version = 0L` garante lock otimista contra race conditions em reenriquecimento.
 
@@ -333,10 +333,18 @@ dnsMxRecords ......  →  dns.mxRecords
 dnsARecords  ......  →  dns.aRecords
 technologies  ......  →  discovery.technologies
 socialLinks   ......  →  discovery.socialLinks
+exposedPhones ......  →  discovery.exposedPhones
 rdapRegistrar ......  →  rdap.registrar
 ...                                      ...
 openSerpRawData .....  →  discovery.serpRawData (se presente)
 ```
+
+### 5.3 Comportamentos Especiais
+
+- **Snapshot/Restore:** Se o reenriquecimento falhar (ex: CAPTCHA no OpenSERP), os dados anteriores são preservados automaticamente via snapshot de todos os campos.
+- **Deduplicação:** `nameMentions` são deduplicados por URL; `foundDocuments` e `discoveredUrls` são deduplicados mantendo a ordem; itens do OpenSERP são deduplicados por URL.
+- **Filtragem de Links Sociais:** `socialLinks` são filtrados para manter apenas URLs que contenham o nome ou e-mail exato da pessoa.
+- **Busca sem Domínio:** Quando nenhum domínio é informado, o sistema busca telefones, e-mails e redes sociais nos sites `.com`/`.com.br` encontrados pelo OpenSERP.
 
 ---
 
