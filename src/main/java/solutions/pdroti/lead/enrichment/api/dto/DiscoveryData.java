@@ -24,6 +24,9 @@ public record DiscoveryData(
         @Schema(description = "E-mails expostos encontrados")
         List<String> exposedEmails,
 
+        @Schema(description = "Telefones encontrados")
+        List<String> exposedPhones,
+
         @Schema(description = "Menções ao nome da pessoa encontradas na página")
         List<String> nameMentions,
 
@@ -48,7 +51,7 @@ public record DiscoveryData(
     /** Retorna um DiscoveryData vazio (sem dados). */
     public static DiscoveryData empty() {
         return new DiscoveryData(
-                List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), 0,
                 List.of(), List.of(), null
         );

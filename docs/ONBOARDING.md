@@ -1,6 +1,6 @@
 # Guia de Onboarding — Lead Enrichment API
 
-> **Bem-vindo(a) ao time!** Este guia vai te ajudar a configurar o ambiente, entender o projeto e fazer sua primeira contribuição em menos de 30 minutos.
+> Este guia orienta a configuração do ambiente, entendimento do projeto e primeira contribuição. Tempo estimado: 10 a 15 minutos.
 
 ---
 
@@ -45,7 +45,7 @@ curl -H "X-API-KEY: $(grep API_KEY .env | cut -d= -f2)" \
   -d '{"email":"contato@exemplo.com","name":"Maria Santos"}'
 ```
 
-**Tempo estimado:** 10–15 minutos.
+
 
 ---
 
@@ -86,7 +86,7 @@ java -version
 # Deve mostrar: openjdk version "21" ...
 ```
 
-> 💡 **Windows:** O projeto inclui `build-jdk21.bat` que configura o PATH para um JDK 21 portable em `C:\openjdk-21_windows-x64_bin\jdk-21`. Ajuste o caminho se necessário.
+> **Windows:** O projeto inclui `build-jdk21.bat` que configura o PATH para um JDK 21 portable em `C:\openjdk-21_windows-x64_bin\jdk-21`. Ajuste o caminho se necessário.
 
 ### 3.2 Configure o `.env`
 

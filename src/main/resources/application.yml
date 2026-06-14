@@ -43,6 +43,7 @@ spring:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
   jpa:
+    open-in-view: true
     show-sql: false
     format-sql: false
     hibernate:

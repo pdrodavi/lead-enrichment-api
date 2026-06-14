@@ -1,4 +1,4 @@
-# Diagrama de Componentes e Sequência
+# Diagrama de Componentes e Sequência — Lead Enrichment API
 
 ## Diagrama de Componentes (Atualizado)
 

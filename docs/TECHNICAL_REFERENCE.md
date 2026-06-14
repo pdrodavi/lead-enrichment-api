@@ -162,17 +162,20 @@ lead-enrichment-api/
 | `ApiKeyFilter` | Filtro `OncePerRequestFilter` que valida header `X-API-KEY`; endpoints públicos: `/actuator`, `/swagger-ui`, `/v3/api-docs` |
 | `GlobalExceptionHandler` | `@RestControllerAdvice` que padroniza erros: validação (400), argumento inválido (400), I/O (log apenas), genérico (500) |
 | `OpenApiConfig` | Configuração SpringDoc OpenAPI com esquema de segurança `X-API-KEY` |
-| `TracingFilter` | Captura corpo de request/response para tracing OpenTelemetry |
+| `TracingFilter` | Filtro OpenTelemetry — captura corpo de request/response para tracing distribuído |
+| `TimingFilter` | Filtro de timing — loga duração de cada requisição HTTP (ex: `▶ POST /api/v1/leads/enrich → 200 em 34.2s`) — **desabilitado** (`//@Component`) |
 | `EncryptedEmailConverter` | `AttributeConverter` que criptografa/descriptografa e-mail com AES-128-GCM |
 | `TechScraperProperties` | `@ConfigurationProperties` com 65+ assinaturas de tecnologia, detectores de script e meta-generators |
 | `SocialDiscoveryProperties` | `@ConfigurationProperties` com 31 domínios de redes sociais e 23 nomes de plataforma |
 | `OpenSerpProxyProperties` | `@ConfigurationProperties` para múltiplos endpoints OpenSERP com proxy rotation |
+| `RedisConfig` | `@Configuration` | Factory `LettuceConnectionFactory` + `StringRedisTemplate` condicionais (`@ConditionalOnProperty`) |
 
 ### 3.2 Camada de Serviços (`service/`)
 
 | Serviço | Tecnologia | Função | Cache |
 |---|---|---|---|
 | `LeadService` | Spring `@Service` | Orquestrador: coordena `OpenSerpEnricher` + `DomainEnricher` em paralelo | — |
+| `RedisCacheService` | Redis (Lettuce) | Cache L2 distribuído (get síncrono, setAsync fire-and-forget, fallback Caffeine) | Redis |
 | `OpenSerpEnricher` | Gson + RestTemplate | Busca Google via OpenSERP (6 frentes, merge seguro) | — |
 | `DomainEnricher` | Diversos | Orquestra DNS + TechScraper + Social + RDAP | — |
 | `DnsValidationService` | dnsjava | Consulta 5 tipos de registro DNS (MX, A, AAAA, CNAME, TXT) em paralelo | Caffeine 1h |

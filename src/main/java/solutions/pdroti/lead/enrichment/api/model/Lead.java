@@ -112,6 +112,11 @@ public class Lead implements Serializable {
     @Column(length = 2048)
     private List<String> exposedEmails;
 
+    @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
+    @Column(length = 50)
+    private List<String> exposedPhones;
+
     private int dorkFindings;
 
     @ElementCollection(fetch = FetchType.LAZY)

@@ -1,4 +1,4 @@
-# Guia da API
+# Guia da API — Lead Enrichment API
 
 ## Base URL
 

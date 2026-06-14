@@ -67,6 +67,7 @@ public class DomainEnricherService {
         lead.setSocialLinks(new ArrayList<>());
         lead.setSocialProfileSummaries(new ArrayList<>());
         lead.setExposedEmails(new ArrayList<>());
+        lead.setExposedPhones(new ArrayList<>());
         lead.setNameMentions(new ArrayList<>());
         lead.setDorkFindings(0);
         lead.setOpenSerpRawData(null);

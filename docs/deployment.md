@@ -1,4 +1,4 @@
-# Guia de Deploy
+# Guia de Implantação — Lead Enrichment API
 
 ## Pré-requisitos
 
@@ -40,6 +40,7 @@ docker compose down -v
 | Serviço | Imagem | Porta | Descrição |
 |---|---|---|---|
 | `postgres` | postgres:16 | 5433 | Banco de dados relacional |
+| `redis` | redis:latest | 6379 | Cache L2 distribuído (Redis) com persistência AOF |
 | `openserp` | karust/openserp:latest | 7000 | Google Search API (instância 1) |
 | `openserp2` | karust/openserp:latest | 7002 | Google Search API (instância 2) |
 | `openserp3` | karust/openserp:latest | 7003 | Google Search API (instância 3) |
@@ -49,6 +50,8 @@ docker compose down -v
 ### Rede
 
 Todos os serviços compartilham a rede `lead-enrichment-api-network` (bridge).
+
+> **Redis:** Opcional. Se `REDIS_HOST` não for configurado, a aplicação opera apenas com cache local Caffeine (L1). O Redis (L2) é ativado automaticamente quando o host é fornecido, fornecendo cache distribuído entre instâncias.
 
 ---
 
@@ -105,6 +108,8 @@ Todas as configurações sensíveis são lidas do arquivo `.env` ou de variávei
 | `OPENSERP_API_URL_2` | ❌ | URL do OpenSERP 2 | `http://localhost:7002` |
 | `OPENSERP_API_URL_3` | ❌ | URL do OpenSERP 3 | `http://localhost:7003` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | ❌ | Endpoint OTLP para Jaeger | `http://localhost:4318/v1/traces` |
+| `REDIS_HOST` | ❌ | Host do Redis (se vazio, cache L2 desabilitado) | — |
+| `REDIS_PASSWORD` | ❌ | Senha do Redis | — |
 | `PORT` | ❌ | Porta da aplicação (default: 8081) | `8081` |
 
 > ⚠️ **Nunca** commite o `.env` — ele já está no `.gitignore`.
@@ -133,8 +138,8 @@ docker run -d \
   -e DB_URL=jdbc:postgresql://host.docker.internal:5433/postgres \
   -e DB_USERNAME=postgres \
   -e DB_PASSWORD=pgsqldev \
-   -e API_KEY=sua-chave-aqui \
-   -e ENCRYPTION_SECRET=sua-chave-aes-aqui \
+  -e API_KEY=sua-chave-aqui \
+  -e ENCRYPTION_SECRET=sua-chave-aes-aqui \
   lead-enrichment-api:latest
 ```
 
@@ -169,28 +174,6 @@ social-discovery:
     linkedin.com: "LinkedIn"
     # ...
 ```
-
-## Variáveis de Ambiente
-
-| Variável | Descrição | Padrão | Obrigatória |
-|---|---|---|---|
-| `DB_URL` | URL de conexão JDBC do PostgreSQL | `jdbc:postgresql://localhost:5433/postgres` | Sim |
-| `DB_USERNAME` | Usuário do banco | `postgres` | Sim |
-| `DB_PASSWORD` | Senha do banco | `pgsqldev` | Sim |
-| `API_KEY` | Chave para autenticação via header `X-API-KEY` | `b6vxAgj5KG5HPGCKlQQ7` | Sim |
-| `ENCRYPTION_SECRET` | Chave AES-128 para criptografia de e-mails (mín. 16 bytes) | `f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=` | Sim |
-| `OPENSERP_API_URL` | URL base da API OpenSERP | `http://localhost:7000` | Sim |
-| `PORT` | Porta do servidor HTTP | `8081` | Sim |
-| `ENV` | Sufixo de ambiente para nomes de container | `dev` | Opcional |
-
-### Variáveis específicas do Docker Compose
-
-| Variável | Descrição | Padrão |
-|---|---|---|
-| `PG_USER` | Usuário PostgreSQL (Docker) | `postgres` |
-| `PG_PASSWORD` | Senha PostgreSQL (Docker) | `pgsqldev` |
-| `PG_DB` | Nome do banco (Docker) | `postgres` |
-| `PG_PORT` | Porta exposta do PostgreSQL | `5433` |
 
 ---
 
@@ -266,4 +249,6 @@ docker exec postgres-dev pg_dump -U postgres postgres > backup-leads.sql
 
 ### Expurgo de Dados (LGPD)
 
-O sistema mantém registros soft-deleted por 365 dias. Um job futuro deverá expurgar fisicamente registros com `deletedAt` superior a 365 dias.
+Atualmente a API utiliza **hard delete** (exclusão física) via `LeadDeletionService.hardDelete()`. Registros removidos não ocupam espaço e não requerem expurgo futuro.
+
+> Consulte o [ADR-004](./adr/ADR-004-soft-delete-lgpd.md) para detalhes sobre a estratégia de exclusão.

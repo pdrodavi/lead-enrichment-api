@@ -2,7 +2,7 @@
 
 ## Status
 
-Atualizado (Jun/2026) — Adicionado RedisConfig e OpenSerpProxyProperties
+**Atualizado (Jun/2026)** — Adicionados RedisConfig e OpenSerpProxyProperties
 
 ## Contexto
 

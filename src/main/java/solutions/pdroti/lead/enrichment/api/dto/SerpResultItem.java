@@ -54,17 +54,15 @@ public record SerpResultItem(
     private static String extractFileType(String url) {
         if (url == null) return null;
         try {
-            String path = url.toLowerCase();
-            // Remove query string e fragmento
-            int qIdx = path.indexOf('?');
-            if (qIdx > 0) path = path.substring(0, qIdx);
-            int fIdx = path.indexOf('#');
-            if (fIdx > 0) path = path.substring(0, fIdx);
-            // Pega extensão após último ponto
+            // Extrai apenas o PATH da URL (ignora domínio, query e fragmento)
+            var parsed = new java.net.URI(url).getPath();
+            if (parsed == null || parsed.isBlank() || parsed.equals("/")) return null;
+            String path = parsed.toLowerCase();
+            // Pega extensão após último ponto no path
             int dotIdx = path.lastIndexOf('.');
             if (dotIdx < 0) return null;
             String ext = path.substring(dotIdx + 1);
-            // Se for extensão de página web, retorna null (não classifica)
+            // Ignora extensões de página web (não classifica como documento)
             return switch (ext) {
                 case "html", "htm", "php", "asp", "aspx", "jsp", "cfm" -> null;
                 default -> ext;

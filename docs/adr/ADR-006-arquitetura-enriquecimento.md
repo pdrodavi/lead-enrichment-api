@@ -69,8 +69,6 @@ LeadService (Orquestrador — Virtual Threads)
 
 Também foram criados utilitários estáticos (`DataParser`) e serviços auxiliares (`LeadDeletionService`) para manter o `LeadService` como orquestrador puro (~140 linhas).
 
-### Camada de Configuração Externalizada
-
 A refatoração introduziu classes `@ConfigurationProperties` para centralizar parâmetros antes hardcoded:
 
 | Classe | Prefixo YAML | Propriedades |

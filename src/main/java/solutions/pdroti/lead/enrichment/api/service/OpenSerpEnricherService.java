@@ -146,6 +146,11 @@ public class OpenSerpEnricherService {
         lead.setExposedEmails(new ArrayList<>(mergedEmails));
         lead.setDorkFindings(lead.getExposedEmails().size());
 
+        Set<String> mergedPhones = new LinkedHashSet<>(
+                lead.getExposedPhones() != null ? lead.getExposedPhones() : List.of());
+        mergedPhones.addAll(ctx.phones());
+        lead.setExposedPhones(new ArrayList<>(mergedPhones));
+
         Set<String> mergedMentions = new LinkedHashSet<>(
                 lead.getNameMentions() != null ? lead.getNameMentions() : List.of());
         mergedMentions.addAll(ctx.nameMentions());
