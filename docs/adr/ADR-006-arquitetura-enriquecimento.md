@@ -24,14 +24,15 @@ LeadController
      ▼
 LeadService (Orquestrador — Virtual Threads)
      │
-     ├──▶ OpenSerpEnricher (6 buscas paralelas)
-     │       ├── searchPerson()         → busca geral
-     │       ├── searchDocuments()      → PDF, DOC, DOCX
-     │       ├── searchSocialMedia()    → redes sociais
-     │       ├── searchProfessional()   → LinkedIn, GitHub, CV
-     │       ├── searchContact()        → email, telefone
-     │       ├── searchNews()           → notícias
-     │       ├── OpenSerpSearch         (RestTemplate + HttpClient 5)
+     ├──▶ OpenSerpEnricher (6 buscas paralelas — merge seguro)
+     │       ├── searchPerson()         → busca geral (cache L1+L2)
+     │       ├── searchDocuments()      → PDF, DOC, DOCX (cache L1+L2)
+     │       ├── searchSocialMedia()    → redes sociais (cache L1+L2)
+     │       ├── searchProfessional()   → LinkedIn, GitHub, CV (cache L1+L2)
+     │       ├── searchContact()        → email, telefone (cache L1+L2)
+     │       ├── searchNews()           → notícias (cache L1+L2)
+     │       ├── OpenSerpSearch         (RestTemplate + HttpClient 5 + RedisCacheService)
+     │       ├── RedisCacheService      (L2 cache distribuído)
      │       └── SocialDiscoveryService (domínios sociais)
      │
      ├──▶ DomainEnricher
@@ -45,7 +46,10 @@ LeadService (Orquestrador — Virtual Threads)
      │
      📦 DataParser (util — email, phone, name parsers)
      📦 EmailUtils (util — mascaramento e hash)
-     📦 AppConfig  (RestTemplate + Connection Pooling + Caffeine caches)
+     📦 AppConfig  (RestTemplate + Connection Pooling + Caffeine caches + CacheManager)
+     📦 RedisConfig (Redis condicional + LettuceConnectionFactory)
+     📦 RedisCacheService (L2 cache distribuído com fallback)
+     📦 ContentTracker (hash SHA-256 para detecção de mudanças)
 ```
 
 ### Serviços e Responsabilidades
@@ -54,7 +58,7 @@ LeadService (Orquestrador — Virtual Threads)
 |---|---|---|---|
 | `OpenSerpEnricher` | — | Orquestra 6 buscas Google paralelas + extrai dados (emails, telefones, menções) | `supplySearch()` com try-catch |
 | `DomainEnricher` | — | Orquestra DNS + RDAP + scraping + sociais com cache Caffeine | `executeSafely` próprio |
-| `LeadDeletionService` | Spring Data JPA | Hard delete (1 query) e soft delete | `parseNumericId` |
+| `LeadDeletionService` | Spring Data JPA | Hard delete (1 query) | `parseNumericId` |
 | `DnsValidationService` | dnsjava 3.6 | MX, A, AAAA, CNAME, TXT | try-catch via `executeSafely` |
 | `TechScraperService` | Jsoup 1.17 | ~90 assinaturas de tecnologia (externalizadas em YAML), e-mails expostos, menções de nome | try-catch próprio |
 | `SocialDiscoveryService` | Jsoup 1.17 | Links para 31 plataformas (externalizadas em YAML), perfis com título/descrição | try-catch próprio |

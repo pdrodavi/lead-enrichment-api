@@ -11,8 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
-import static solutions.pdroti.lead.enrichment.api.dto.SerpSearchResult.empty;
-
 /**
  * Resposta com dados enriquecidos do lead (email mascarado por LGPD).
  * <p>
@@ -145,7 +143,7 @@ public record LeadResponse(
             return mapper.readValue(lead.getOpenSerpRawData(), SerpSearchResult.class);
         } catch (Exception e) {
             log.error("Erro ao deserializar openSerpRawData para lead ID {}: {}", lead.getId(), e.getMessage());
-            return empty(null);
+            return SerpSearchResult.empty(null);
         }
     }
 

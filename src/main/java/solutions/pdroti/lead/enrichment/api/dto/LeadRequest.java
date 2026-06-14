@@ -3,6 +3,7 @@ package solutions.pdroti.lead.enrichment.api.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
@@ -24,6 +25,7 @@ public class LeadRequest {
     private String domain;
 
     @NotBlank
-    @Schema(description = "Nome da pessoa (obrigatório)", example = "João Silva")
+    @Size(min = 3, message = "Nome deve ter pelo menos 3 caracteres")
+    @Schema(description = "Nome da pessoa (obrigatório, mín. 3 caracteres)", example = "João Silva")
     private String name;
 }

@@ -46,19 +46,21 @@ API para enriquecimento de leads com dados públicos da internet. A partir de um
 
 ## Refatorações Realizadas
 
-Após 3 ciclos de revisão de código, dezenas de melhorias foram implementadas:
+Após ciclos de revisão de código, dezenas de melhorias foram implementadas:
 
 | Categoria | Principais correções |
 |---|---|
 | 🔴 Segurança | Credenciais removidas para `.env`, criptografia sem fallback, log + throw na descriptografia, API Key via filter |
 | 🟢 Java 21 | Migração JDK 17 → 21 com Virtual Threads (`Executors.newVirtualThreadPerTaskExecutor()`) |
 | 🟢 Observabilidade | OpenTelemetry + Jaeger (`management.otlp.tracing.endpoint`) com captura de request/response body |
-| 🟢 Performance | Cache Caffeine (DNS, tech, social), HTTP Connection Pooling (HttpClient 5), compressão Gzip, paginação |
-| 🔴 Performance | Consultas DNS paralelas (5 tipos simultâneos), 6 buscas OpenSERP em paralelo, rate limiting 2s |
-| 🟡 Infra | Docker Compose com Jaeger, 3 OpenSERP, rede npm, proxy rotation + circuit breaker |
-| 🟡 Arquitetura | `LeadService` extraído em `OpenSerpEnricher`, `DomainEnricher`, `LeadDeletionService`, `DataParser` |
-| 🔵 Manutenibilidade | `@Getter @Setter` no `Lead`, `@ConfigurationPropertiesScan`, `@EnableSpringDataWebSupport(VIA_DTO)` |
-| 📚 Documentação | 10 ADRs, diagramas Mermaid, `.env.example`, guias atualizados |
+| 🟢 Performance | Cache Caffeine (7 caches) + Redis L2, ContentTracker (hash SHA-256), HTTP Connection Pooling (HttpClient 5), compressão Gzip, paginação |
+| 🔴 Performance | Consultas DNS paralelas (5 tipos), 6 buscas OpenSERP em paralelo, merge seguro contra race condition, cópia defensiva em todos os 7 métodos de cache |
+| 🟡 Infra | Docker Compose com Jaeger, Redis, 3 OpenSERP, rede npm, proxy rotation + circuit breaker |
+| 🟡 Arquitetura | `LeadService` extraído em `OpenSerpEnricher`, `DomainEnricher`, `LeadDeletionService`, `RedisCacheService`, `DataParser` |
+| 🟡 JPA | `@Fetch(FetchMode.SUBSELECT)` para eliminar N+1, `@Version` para lock otimista, `@BatchSize` |
+| 🔵 Manutenibilidade | `@Getter @Setter` no `Lead`, `@ConfigurationPropertiesScan`, `@EnableCaching`, `@EnableSpringDataWebSupport(VIA_DTO)` |
+| 🔵 Cache | `@Cacheable("enrich-result")` no endpoint, `@CacheEvict` manual no update (old + new email) |
+| 📚 Documentação | 10 ADRs, diagramas Mermaid atualizados com cache L1+L2 e merge seguro, guias revisados |
 
 ---
 
@@ -79,7 +81,7 @@ build-jdk21.bat spring-boot:run -Dmaven.test.skip=true
 # 4. Acesse a API
 curl -H "X-API-KEY: $(grep API_KEY .env | cut -d= -f2)" \
   -H "Content-Type: application/json" \
-  -X POST http://localhost:${PORT:-8781}/api/v1/leads/enrich \
+  -X POST http://localhost:${PORT:-8081}/api/v1/leads/enrich \
   -d '{"email":"contato@exemplo.com","name":"João Silva"}'
 
 # 5. Swagger UI
@@ -103,25 +105,28 @@ mindmap
     PostgreSQL 16
     Serviços
       LeadService - orquestrador
-      OpenSerpEnricher - 6 buscas
-      DomainEnricher
+      OpenSerpEnricher - 6 buscas + merge
+      DomainEnricher - merge seguro
       LeadDeletionService
+      RedisCacheService - L2 distribuído
       DnsValidation - 5 tipos em paralelo
-      TechScraper - 60+ assinaturas
+      TechScraper - 90+ assinaturas
       SocialDiscovery
       RdapService
-      OpenSerpSearch
+      OpenSerpSearch - L1+L2 cache
       EncryptionService
     Observabilidade
       OpenTelemetry
       Jaeger - tracing
       Request e Response body capture
     Otimizações
-      Cache Caffeine
+      Cache Caffeine + Redis L2
+      ContentTracker - hash SHA-256
       HTTP Connection Pooling
       Virtual Threads - Java 21
       Gzip Compression
       Paginação
+      LeadResponseSummary - list leve
     Segurança
       AES-128-GCM
       SHA-256
@@ -129,6 +134,7 @@ mindmap
       Hard Delete
     Infra
       Docker Compose
+      Redis
       Jaeger
       3x OpenSERP
       Proxy rotation

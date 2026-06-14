@@ -1,4 +1,6 @@
-package solutions.pdroti.lead.enrichment.api.service;
+package solutions.pdroti.lead.enrichment.api.enums;
+
+import solutions.pdroti.lead.enrichment.api.util.ErrorMatcher;
 
 import javax.net.ssl.SSLException;
 import java.net.SocketTimeoutException;

@@ -20,25 +20,43 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
+/**
+ * Serviço de descoberta e scraping de redes sociais.
+ * <p>
+ * A partir do HTML de um domínio, extrai links para redes sociais
+ * (31 plataformas configuradas via {@link SocialDiscoveryProperties})
+ * e faz scraping individual de cada perfil para obter título e descrição.
+ * <p>
+ * Otimizações:
+ * <ul>
+ *   <li>Cache Caffeine para links sociais por domínio (1h)</li>
+ *   <li>Cache Caffeine para dados de perfil social por URL (1h)</li>
+ *   <li>Scraping de perfis em paralelo via {@code CompletableFuture}</li>
+ * </ul>
+ */
 @Slf4j
 @Service
 public class SocialDiscoveryService {
 
-    private static final int TIMEOUT_MS = 10_000;
-    private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
     private static final String HTTPS_PREFIX = "https://";
     private static final String PROTOCOL_RELATIVE_PREFIX = "//";
 
     private final SocialDiscoveryProperties properties;
     private final Cache<String, List<String>> socialLinksCache;
+    private final Cache<String, SocialProfileData> socialProfileCache;
+    private final org.springframework.web.client.RestTemplate restTemplate;
     private final Executor enrichmentExecutor;
 
     public SocialDiscoveryService(SocialDiscoveryProperties properties,
                                    Cache<String, List<String>> socialLinksCache,
+                                   Cache<String, SocialProfileData> socialProfileCache,
+                                   org.springframework.web.client.RestTemplate restTemplate,
                                    @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
                                    java.util.concurrent.Executor enrichmentExecutor) {
         this.properties = properties;
         this.socialLinksCache = socialLinksCache;
+        this.socialProfileCache = socialProfileCache;
+        this.restTemplate = restTemplate;
         this.enrichmentExecutor = enrichmentExecutor;
     }
 
@@ -68,11 +86,11 @@ public class SocialDiscoveryService {
     /** Faz o fetch da página com User-Agent e timeout configurados. */
     private Document fetchPage(String domain) throws IOException {
         String url = ensureUrlScheme(domain);
-        return Jsoup.connect(url)
-                .userAgent(USER_AGENT)
-                .timeout(TIMEOUT_MS)
-                .followRedirects(true)
-                .get();
+        String html = restTemplate.getForObject(url, String.class);
+        if (html == null || html.isBlank()) {
+            throw new IOException("Resposta vazia de " + url);
+        }
+        return Jsoup.parse(html);
     }
 
     /** Garante que o domínio tenha scheme (https por padrão). */
@@ -185,6 +203,16 @@ public class SocialDiscoveryService {
 
     /** Scrapeia um perfil social com try-catch, retornando null em caso de erro. */
     private SocialProfileData scrapeProfileSafely(String url) {
+        if (url == null || url.isBlank()) return null;
+
+        // Tenta cache primeiro
+        String cacheKey = url.toLowerCase().strip();
+        SocialProfileData cached = socialProfileCache.getIfPresent(cacheKey);
+        if (cached != null) {
+            log.debug("SocialProfile cache hit para {}", url);
+            return cached;
+        }
+
         try {
             String platform = identifyPlatform(url);
             Document doc = fetchSocialPage(url);
@@ -192,6 +220,7 @@ public class SocialDiscoveryService {
             String description = extractMetaDescription(doc);
             var profile = new SocialProfileData(url, platform, title, description);
             log.debug("Perfil scrapy: {} — {}", platform, title);
+            socialProfileCache.put(cacheKey, profile);
             return profile;
         } catch (Exception e) {
             log.debug("Falha ao scrapear {}: {}", url, e.getMessage());
@@ -211,11 +240,11 @@ public class SocialDiscoveryService {
 
     /** Faz fetch da página social com User-Agent realista. */
     private Document fetchSocialPage(String url) throws IOException {
-        return Jsoup.connect(url)
-                .userAgent(USER_AGENT)
-                .timeout(TIMEOUT_MS)
-                .followRedirects(true)
-                .get();
+        String html = restTemplate.getForObject(url, String.class);
+        if (html == null || html.isBlank()) {
+            throw new IOException("Resposta vazia de " + url);
+        }
+        return Jsoup.parse(html);
     }
 
     /** Extrai o título da página. */

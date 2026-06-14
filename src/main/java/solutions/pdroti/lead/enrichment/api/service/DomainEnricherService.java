@@ -20,11 +20,18 @@ import java.util.function.Supplier;
  * <p>
  * Extraído do {@code LeadService} para manter a responsabilidade única (SRP).
  * <p>
- * Otimizações: resultados de tecnologias são cacheados via Caffeine (1h).
+ * Otimizações:
+ * <ul>
+ *   <li>Resultados de tecnologias cacheados via Caffeine (1h)</li>
+ *   <li>Cache RDAP via Caffeine (1h)</li>
+ *   <li>Links sociais cacheados via Caffeine (1h)</li>
+ *   <li>Dados de perfil social cacheados via Caffeine (1h)</li>
+ *   <li>Merge seguro com {@link OpenSerpEnricherService} via {@code LinkedHashSet}</li>
+ * </ul>
  */
 @Slf4j
 @Service
-public class DomainEnricher {
+public class DomainEnricherService {
 
     private final DnsValidationService dnsValidationService;
     private final TechScraperService techScraperService;
@@ -32,7 +39,7 @@ public class DomainEnricher {
     private final RdapService rdapService;
     private final Cache<String, List<String>> techCache;
 
-    public DomainEnricher(DnsValidationService dnsValidationService,
+    public DomainEnricherService(DnsValidationService dnsValidationService,
                            TechScraperService techScraperService,
                            SocialDiscoveryService socialDiscoveryService,
                            RdapService rdapService,

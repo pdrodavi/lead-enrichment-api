@@ -35,38 +35,56 @@ flowchart TD
     VALIDATE_UPDATE -->|"Valido"| CALL_SERVICE_UPDATE
     DELETE --> CALL_SERVICE_DELETE
 
-    subgraph "LeadService - Orquestracao"
+    subgraph "LeadService - Orquestração"
         CALL_SERVICE["enrich(email, domain, name)"]
-        CALL_SERVICE_LIST["listAll"]
+        CALL_SERVICE_LIST["listAll<br/>→ LeadResponseSummary (leve)"]
         CALL_SERVICE_FIND["findById(id)"]
         CALL_SERVICE_DOMAIN["findByDomain(domain)"]
-        CALL_SERVICE_UPDATE["update(id, email, domain, name)"]
-        CALL_SERVICE_DELETE["softDelete(id)"]
+        CALL_SERVICE_UPDATE["update(id, email, domain, name)<br/>→ evict cache old email"]
+        CALL_SERVICE_DELETE["hardDelete(id)"]
 
         CALL_SERVICE --> RESET_ENRICH["domainEnricher.resetEnrichmentData()"]
-        RESET_ENRICH --> OPENSERP_ENRICH["openSerpEnricher.enrich(lead, name)<br/>SerpProcessingContext"]
-        OPENSERP_ENRICH --> HAS_DOMAIN{"Domínio presente?"}
-        HAS_DOMAIN -->|"Sim"| FULL_FLOW
-        HAS_DOMAIN -->|"Não"| SAVE
+        RESET_ENRICH --> PARALLEL_BLOCK
 
-        subgraph FULL_FLOW["DomainEnricher.enrich()"]
-            D_CALL["DnsValidationService lookupDomain"]
-            T_CALL["TechScraperService<br/>scrapeTechnologiesAndCheckName<br/>⚡ 1 chamada HTTP"]
-            S_CALL["SocialDiscoveryService discoverSocialLinks"]
-            R_CALL["RdapService lookup"]
+        PARALLEL_BLOCK --> OPENSERP_ENRICH["openSerpEnricher.enrich(lead, name)"]
+        PARALLEL_BLOCK --> HAS_DOMAIN{"Domínio presente<br/>e não pessoal?"}
+
+        OPENSERP_ENRICH --> OPENSERP_FLOW
+        subgraph OPENSERP_FLOW["OpenSerpEnricher (sempre)"]
+            direction TB
+            S1["6 buscas paralelas (cache L1+L2)"] --> S2["SerpProcessingContext"]
+            S2 --> S3["Merge seguro com Domain<br/>(LinkedHashSet)"]
         end
 
-        FULL_FLOW --> SAVE
-        SAVE["save/update no PostgreSQL"]
+        HAS_DOMAIN -->|"Sim"| FULL_FLOW
+        HAS_DOMAIN -->|"Não (pessoal)"| MERGE_DONE
 
-        CALL_SERVICE_LIST --> DB_LIST["findByStatus ACTIVE"]
+        subgraph FULL_FLOW["DomainEnricher.enrich()"]
+            D_CALL["DnsValidationService lookupDomain<br/>5 tipos DNS paralelos"]
+            T_CALL["TechScraperService<br/>scrapeTechnologiesAndCheckName<br/>+ cache Caffeine 1h"]
+            S_CALL["SocialDiscoveryService discoverSocialLinks<br/>+ cache Caffeine 1h"]
+            R_CALL["RdapService lookup<br/>+ cache Caffeine 1h"]
+        end
+
+        FULL_FLOW --> MERGE_DONE
+        OPENSERP_FLOW --> MERGE_DONE
+
+        MERGE_DONE["🔀 Merge automático<br/>socialLinks + nameMentions + discoveredUrls<br/>exposedEmails + foundDocuments"]
+        MERGE_DONE --> SAVE["save/update no PostgreSQL<br/>TransactionTemplate curto"]
+
+        CALL_SERVICE_LIST --> DB_LIST["findByStatus ACTIVE<br/>+ @Fetch(SUBSELECT)"]
         CALL_SERVICE_FIND --> DB_FIND["findById + status != DELETED"]
         CALL_SERVICE_DOMAIN --> DB_DOMAIN["findByDomainAndStatus"]
         CALL_SERVICE_UPDATE --> DB_UPDATE["findById + save"]
         CALL_SERVICE_DELETE --> DB_DELETE["deleteById (hard delete — 1 query)"]
     end
 
-    SAVE --> FORMAT_RESP["Converter Lead para LeadResponse"]
+    SAVE --> CHECK_CACHE{"@Cacheable<br/>enrich-result?"}
+    CHECK_CACHE -->|"Cache miss"| FORMAT_RESP
+    CHECK_CACHE -->|"Cache hit"| CACHED["Retornar resposta cacheada<br/>(Caffeine 24h)"]
+    CACHED --> RESP_200
+
+    FORMAT_RESP["Converter Lead para LeadResponse"]
 
     FORMAT_RESP --> DOMAIN_LEADS{"Buscar todos leads do dominio?"}
     DOMAIN_LEADS -->|"Encontrados"| ALL["Retornar lista completa"]

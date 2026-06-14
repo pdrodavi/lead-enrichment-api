@@ -222,10 +222,17 @@ lead-enrichment-api/
 ├── pom.xml                       # Dependências Maven
 ├── README.md                     # Documentação principal
 ├── docs/
-│   ├── adr/                      # Architecture Decision Records
-│   │   ├── ADR-001-cache-com-redis.md
-│   │   ├── ADR-002-lgpd-soft-delete.md
-│   │   └── ADR-003-criptografia-pii.md
+│   ├── adr/                      # Architecture Decision Records (10 ADRs)
+│   │   ├── ADR-001-stack-tecnologica.md
+│   │   ├── ADR-002-postgresql-jpa.md
+│   │   ├── ADR-003-criptografia-pii-aes-gcm.md
+│   │   ├── ADR-004-soft-delete-lgpd.md
+│   │   ├── ADR-005-api-key-autenticacao.md
+│   │   ├── ADR-006-arquitetura-enriquecimento.md
+│   │   ├── ADR-007-springdoc-openapi.md
+│   │   ├── ADR-008-mascaramento-dados-lgpd.md
+│   │   ├── ADR-009-tratamento-global-erros.md
+│   │   └── ADR-010-configuracao-externalizada.md
 │   ├── architecture.md           # Este documento
 │   ├── api-guide.md              # Guia da API
 │   ├── deployment.md             # Guia de deploy
@@ -272,6 +279,13 @@ lead-enrichment-api/
 
 | ADR | Título | Decisão |
 |---|---|---|
-| [ADR-001](./adr/ADR-001-cache-com-redis.md) | Cache-Aside com Redis | Cache distribuído com Redis para reduzir latência |
-| [ADR-002](./adr/ADR-002-lgpd-soft-delete.md) | Soft Delete para LGPD | Exclusão lógica com retenção de 365 dias |
-| [ADR-003](./adr/ADR-003-criptografia-pii.md) | Criptografia de PII | AES-128-GCM para e-mails em repouso |
+| [ADR-001](./adr/ADR-001-stack-tecnologica.md) | Stack Tecnológica | Java 21 + Spring Boot 3.3 + Maven + Lombok |
+| [ADR-002](./adr/ADR-002-postgresql-jpa.md) | PostgreSQL + Spring Data JPA | PostgreSQL 16 com ddl-auto=update |
+| [ADR-003](./adr/ADR-003-criptografia-pii-aes-gcm.md) | Criptografia de PII | AES-128-GCM + SHA-256 hash |
+| [ADR-004](./adr/ADR-004-soft-delete-lgpd.md) | Hard Delete para LGPD | Exclusão física em 1 query via deleteById |
+| [ADR-005](./adr/ADR-005-api-key-autenticacao.md) | Autenticação via API Key | Servlet Filter com X-API-KEY |
+| [ADR-006](./adr/ADR-006-arquitetura-enriquecimento.md) | Arquitetura de Enriquecimento | Orquestração com 12 serviços + merge seguro |
+| [ADR-007](./adr/ADR-007-springdoc-openapi.md) | Documentação SpringDoc | Swagger UI com schema de segurança |
+| [ADR-008](./adr/ADR-008-mascaramento-dados-lgpd.md) | Mascaramento LGPD | EmailUtils centralizado |
+| [ADR-009](./adr/ADR-009-tratamento-global-erros.md) | Tratamento Global de Erros | @RestControllerAdvice com JSON padronizado |
+| [ADR-010](./adr/ADR-010-configuracao-externalizada.md) | Configuração Externalizada | @ConfigurationProperties para serviços |

@@ -1,6 +1,6 @@
 # Diagrama de Componentes e Sequência
 
-## Diagrama de Componentes
+## Diagrama de Componentes (Atualizado)
 
 ```mermaid
 graph TB
@@ -12,49 +12,58 @@ graph TB
 
     subgraph "Camada de Segurança"
         AKF["«SecurityFilter» ApiKeyFilter<br/>Valida X-API-KEY"]
+        TF["TracingFilter<br/>OpenTelemetry<br/>Request/Response body capture"]
     end
 
     subgraph "Camada de Configuração"
-        APP["AppConfig<br/>RestTemplate Beans<br/>padrão: 5s/20s | OpenSERP: 10s/30s"]
+        APP["AppConfig<br/>RestTemplate, Caffeine caches<br/>CacheManager (@Cacheable)<br/>Virtual Thread Executor"]
+        RCFG["RedisConfig<br/>@ConditionalOnProperty<br/>LettuceConnectionFactory"]
         TCP["TechScraperProperties<br/>(assinaturas YAML)"]
         SDP["SocialDiscoveryProperties<br/>(domínios + plataformas)"]
+        OSP["OpenSerpProxyProperties<br/>(endpoints + proxy rotation)"]
     end
 
     subgraph "Camada de Serviços"
-        LS["«Orquestrador» LeadService<br/>~140 linhas<br/>⚡ CompletableFuture.allOf"]
-        OSE["OpenSerpEnricher<br/>⚡ fetchResults + fetchDocuments<br/>em paralelo (15 resultados)"]
-        DE["DomainEnricher<br/>DNS, RDAP, scraping, redes sociais"]
-        LDS["LeadDeletionService<br/>Hard delete (1 query) + soft delete"]
-        DNS["DnsValidationService<br/>dnsjava — MX, A, AAAA, CNAME, TXT"]
-        TSS["TechScraperService<br/>Jsoup — 1 chamada HTTP combinada"]
-        SDS["SocialDiscoveryService<br/>Jsoup — 33 plataformas"]
-        RS["RdapService<br/>Identity Digital + Registro.br"]
-        OSS["OpenSerpSearch<br/>RestTemplate — Google Search API"]
+        LS["«Orquestrador» LeadService<br/>⚡ CompletableFuture.allOf<br/>⏱ orTimeout 2min"]
+        OSE["OpenSerpEnricher<br/>6 buscas paralelas<br/>Merge seguro com Domain"]
+        DE["DomainEnricher<br/>DNS, RDAP, scraping<br/>executeSafely pattern"]
+        LDS["LeadDeletionService<br/>Hard delete (1 query)"]
+        DNS["DnsValidationService<br/>dnsjava — 5 tipos DNS<br/>Cache Caffeine 1h"]
+        TSS["TechScraperService<br/>Jsoup — 90+ assinaturas<br/>Cache Caffeine 1h"]
+        SDS["SocialDiscoveryService<br/>Jsoup — 31 plataformas<br/>2 caches Caffeine"]
+        RS["RdapService<br/>Identity Digital + Registro.br<br/>Cache Caffeine 1h"]
+        OSS["OpenSerpSearch<br/>Cache L1 Caffeine + L2 Redis<br/>Circuit breaker + rate limit"]
+        RCS["RedisCacheService<br/>L2 distribuído<br/>Async set + fallback"]
+        ES["EncryptionService<br/>AES-128-GCM"]
     end
 
     subgraph "Camada Utilitária"
-        EU["EmailUtils<br/>SHA-256 + Mascaramento LGPD"]
-        DP["DataParser<br/>Parsers estáticos: data, email, nome"]
+        EU["EmailUtils<br/>SHA-256 + Mascaramento LGPD<br/>ThreadLocal MessageDigest"]
+        DP["DataParser<br/>COMMON_EMAIL_PROVIDERS<br/>nameMatchesExactly"]
+        CT["ContentTracker<br/>Hash SHA-256 para<br/>detecção de mudanças"]
     end
 
     subgraph "Camada de Persistência"
         LREPO["LeadRepository<br/>Spring Data JPA"]
-        EEC["EncryptedEmailConverter<br/>+ EncryptionService<br/>AES-128-GCM"]
-        DB[("PostgreSQL 16<br/>Tabela: leads<br/>FetchType: LAZY")]
+        EEC["EncryptedEmailConverter<br/>AES-128-GCM"]
+        DB[("PostgreSQL 16<br/>@Fetch(SUBSELECT)<br/>@Version otimista<br/>@BatchSize(10)")]
+    end
+
+    subgraph "Cache Distribuído"
+        REDIS[("Redis<br/>Cache L2")]
     end
 
     subgraph "Serviços Externos"
         NS["Nameservers Públicos"]
         WEB["Site do Domínio"]
-        SOCIAL["Redes Sociais<br/>31 plataformas"]
-        RDAP_API["Identity Digital API<br/>+ Registro.br RDAP"]
-        OPENSERP["OpenSERP Self-hosted"]
+        SOCIAL["Redes Sociais"]
+        RDAP_API["Identity Digital<br/>+ Registro.br"]
+        OPENSERP["OpenSERP Self-hosted<br/>3 instâncias"]
     end
 
-    %% Conexões
-    AKF -->|401 se inválida| GEH
-    AKF -->|passa requisição| LC
-    LC -->|chama| LS
+    AKF -->|401| GEH
+    AKF --> LC
+    LC --> LS
 
     LS --> OSE
     LS --> DE
@@ -64,48 +73,49 @@ graph TB
 
     OSE --> OSS
     OSE --> SDS
+    OSS --> RCS
     DE --> DNS
     DE --> TSS
     DE --> SDS
     DE --> RS
 
-    TSS --> TCP
-    SDS --> SDP
-    OSS --> APP
+    OSS --> OSP
+    RCS --> REDIS
 
-    LS -->|persiste/consulta| LREPO
+    LS --> LREPO
     LREPO --> EEC
     EEC --> DB
 
-    DNS -->|consulta| NS
-    TSS -->|scraping| WEB
-    SDS -->|scraping| SOCIAL
-    RS -->|HTTP RDAP| RDAP_API
-    OSS -->|HTTP RestTemplate| OPENSERP
+    DNS --> NS
+    TSS --> WEB
+    SDS --> SOCIAL
+    RS --> RDAP_API
+    OSS --> OPENSERP
 
-    %% Estilo
     classDef controller fill:#e7f5ff,stroke:#1971c2,stroke-width:2px
     classDef security fill:#fff5f5,stroke:#e03131,stroke-width:2px
     classDef service fill:#ebfbee,stroke:#2f9e44,stroke-width:2px
     classDef persistence fill:#fff4e6,stroke:#e8590c,stroke-width:2px
     classDef external fill:#f3f0ff,stroke:#6741d9,stroke-width:2px
+    classDef cache fill:#fff3bf,stroke:#f08c00,stroke-width:2px
 
     class LC,OAC,GEH controller
-    class AKF security
-    class APP,TCP,SDP config
-    class LS,OSE,DE,LDS,DNS,TSS,SDS,RS,OSS service
-    class EU,DP service
+    class AKF,TF security
+    class APP,RCFG,TCP,SDP,OSP config
+    class LS,OSE,DE,LDS,DNS,TSS,SDS,RS,OSS,RCS,ES service
+    class EU,DP,CT service
     class LREPO,EEC,DB persistence
+    class REDIS cache
     class NS,WEB,SOCIAL,RDAP_API,OPENSERP external
 ```
 
-## Diagrama de Classes (Modelo de Domínio)
+## Diagrama de Classes (Modelo de Domínio — Atualizado)
 
 ```mermaid
 classDiagram
     class Lead {
         +Long id
-        +String email (criptografado AES-GCM)
+        +String email (AES-GCM)
         +String emailHash (SHA-256, unique)
         +String name
         +String domain
@@ -125,11 +135,13 @@ classDiagram
         +String rdapRawData
         +String rdapRegistrar
         +String rdapRegistrantName
-        +String rdapRegistrationDate
-        +String rdapExpirationDate
+        +String rdapRegistrantEmail
+        +LocalDateTime rdapRegistrationDate
+        +LocalDateTime rdapExpirationDate
         +List~String~ rdapNameservers
         +List~String~ rdapStatus
         +String rdapTaxpayerId
+        +String rdapSource
         +String openSerpRawData
         +List~String~ foundDocuments
         +List~String~ discoveredUrls
@@ -139,12 +151,13 @@ classDiagram
         +LocalDateTime createdAt
         +LocalDateTime updatedAt
         +LocalDateTime deletedAt
+        +Long version (@Version)
     }
 
     class LeadRequest {
         +String email (obrigatório)
         +String domain (opcional)
-        +String name (obrigatório)
+        +String name (obrigatório, min 3)
     }
 
     class LeadResponse {
@@ -155,13 +168,28 @@ classDiagram
         +String status
         +DnsRecords dns
         +DiscoveryData discovery
-        +SerpSearchResult rdap
         +RdapData rdap
         +fromEntity(Lead, ObjectMapper) LeadResponse
-        +~~fromEntity(Lead) LeadResponse (deprecated)
+    }
+
+    class LeadResponseSummary {
+        +Long id
+        +String emailMasked
+        +String name
+        +String domain
+        +String status
+        +boolean mxStatus
+        +int dorkFindings
+        +int technologiesCount
+        +int socialLinksCount
+        +int documentsCount
+        +int mentionsCount
+        +LocalDateTime createdAt
+        +fromEntity(Lead) LeadResponseSummary
     }
 
     class DnsRecords {
+        +boolean mxStatus
         +List~String~ mxRecords
         +List~String~ aRecords
         +List~String~ aaaaRecords
@@ -179,6 +207,7 @@ classDiagram
         +int dorkFindings
         +List~String~ foundDocuments
         +List~String~ discoveredUrls
+        +SerpSearchResult openSerpRawData
     }
 
     class DnsResult {

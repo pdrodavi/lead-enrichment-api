@@ -68,6 +68,23 @@ services:
       - npm
     restart: unless-stopped
 
+  redis:
+    image: redis:latest
+    container_name: redis-${ENV:-dev}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lead-net    
+
   # ===================== Lead Enrichment API =====================
   app:
     build:
@@ -83,6 +100,9 @@ services:
         API_KEY: ${API_KEY:?Configure API_KEY no .env}
         ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?Configure ENCRYPTION_SECRET no .env}
         PORT: ${PORT:-8081}
+        REDIS_HOST: ${REDIS_HOST:-redis-${ENV:-dev}}
+        REDIS_PORT: ${REDIS_PORT:-6379}
+        REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     container_name: lead-enrichment-api-${ENV:-dev}
     ports:
       - "${PORT:-8781}:8081"
@@ -97,6 +117,9 @@ services:
       API_KEY: ${API_KEY:?Configure API_KEY no .env}
       ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?Configure ENCRYPTION_SECRET no .env}
       PORT: ${PORT:-8081}
+      REDIS_HOST: ${REDIS_HOST:-redis-${ENV:-dev}}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,7 +128,9 @@ services:
       openserp2:
         condition: service_started
       openserp3:
-        condition: service_started  
+        condition: service_started
+      redis:
+        condition: service_healthy    
     restart: unless-stopped
     networks:
       - lead-net
@@ -113,6 +138,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
 
 networks:
   lead-net:

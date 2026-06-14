@@ -14,25 +14,25 @@ import java.util.Optional;
  * NOTA: O campo {@code email} é criptografado no banco (AES-GCM),
  * portanto consultas como {@code findByEmail} NÃO funcionam —
  * use {@link #findByEmailHash(String)} para buscar por e-mail.
+ * <p>
+ * As {@code @ElementCollection} usam {@code @Fetch(FetchMode.SUBSELECT)}
+ * para carregar todas as coleções com uma única subquery, evitando
+ * N+1 sem causar {@code MultipleBagFetchException}.
  */
 public interface LeadRepository extends JpaRepository<Lead, Long> {
 
-    /**
-     * Busca lead pelo hash SHA-256 do e-mail.
-     *
-     * @param emailHash hash SHA-256 do e-mail (hexadecimal)
-     * @return lead encontrado, ou vazio
-     */
     Optional<Lead> findByEmailHash(String emailHash);
 
-    /** Busca lead pelo nome (usado para atualizar lead existente). */
     Optional<Lead> findByName(String name);
 
-    /** Busca paginada de leads com determinado status (ex: ACTIVE, DELETED). */
+    @Override
+    Optional<Lead> findById(Long id);
+
     Page<Lead> findByStatus(String status, Pageable pageable);
 
-    /** Busca paginada de leads ativos com o domínio informado. */
     Page<Lead> findByDomainAndStatus(String domain, String status, Pageable pageable);
+
+    List<Lead> findByDomainAndStatus(String domain, String status);
 
     /** Busca todos os leads com determinado status (sem paginação — uso interno). */
     List<Lead> findByStatus(String status);

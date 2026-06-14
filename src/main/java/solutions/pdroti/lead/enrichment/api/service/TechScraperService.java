@@ -1,12 +1,13 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 import solutions.pdroti.lead.enrichment.api.config.TechScraperProperties;
 import solutions.pdroti.lead.enrichment.api.dto.ScrapedPageData;
+import solutions.pdroti.lead.enrichment.api.enums.ScrapeError;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,15 +16,36 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Serviço de detecção de tecnologias e scraping de páginas web.
+ * <p>
+ * Utiliza Jsoup para parsear HTML e detectar tecnologias a partir de
+ * assinaturas configuradas no {@link TechScraperProperties}.
+ * <p>
+ * Assinaturas:
+ * <ul>
+ *   <li>{@code signatures} — substrings no HTML (WordPress, React, Bootstrap, etc.)</li>
+ *   <li>{@code script-detectors} — atributos src de scripts (Facebook Pixel, Hotjar, etc.)</li>
+ *   <li>{@code meta-generators} — meta tags generator (WordPress, Joomla, Drupal, etc.)</li>
+ * </ul>
+ * <p>
+ * Otimizações:
+ * <ul>
+ *   <li>Scraping de tecnologias + verificação de nome em UMA requisição HTTP</li>
+ *   <li>Cache Caffeine (1h) via {@code DomainEnricherService}</li>
+ * </ul>
+ */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class TechScraperService {
 
-    private static final int TIMEOUT_MS = 10_000;
-    private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
-
     private final TechScraperProperties properties;
+    private final RestTemplate restTemplate;
+
+    public TechScraperService(TechScraperProperties properties, RestTemplate restTemplate) {
+        this.properties = properties;
+        this.restTemplate = restTemplate;
+    }
 
     /**
      * Analisa o HTML do domínio e retorna lista de tecnologias detectadas.
@@ -104,12 +126,14 @@ public class TechScraperService {
     }
 
     /** Faz o fetch da página com timeout e User-Agent configurados. */
-    private static Document fetchDocument(String url) throws java.io.IOException {
-        return Jsoup.connect(url)
-                .userAgent(USER_AGENT)
-                .timeout(TIMEOUT_MS)
-                .followRedirects(true)
-                .get();
+    private Document fetchDocument(String url) throws java.io.IOException {
+        // Usa RestTemplate com connection pooling para baixar o HTML,
+        // depois parseia com Jsoup — evita criar conexão nova por requisição
+        String html = restTemplate.getForObject(url, String.class);
+        if (html == null || html.isBlank()) {
+            throw new java.io.IOException("Resposta vazia de " + url);
+        }
+        return Jsoup.parse(html);
     }
 
     /** Detecta tecnologias por assinaturas no HTML (strings características). */
