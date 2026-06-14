@@ -1,4 +1,4 @@
-# Arquitetura do Sistema
+# Arquitetura do Sistema — Lead Enrichment API
 
 ## Visão Geral
 
@@ -14,6 +14,12 @@ graph TB
         API --> AKF[ApiKeyFilter]
         AKF -->|"401 se inválida"| ERR[Erro]
         AKF -->|"OK"| CTRL[LeadController]
+    end
+
+    subgraph "Camada de Cache Distribuído"
+        OSS --> RCS[RedisCacheService<br/>L2 Redis]
+        RCS --> REDIS[(Redis<br/>Cache L2)]
+        OSS --> CT[ContentTracker<br/>SHA-256 hash]
     end
 
     subgraph "Camada de Serviços"
@@ -265,7 +271,7 @@ lead-enrichment-api/
         │   ├── service/
         │   │   ├── DnsValidationService.java
         │   │   ├── LeadService.java
-        │   │   ├── OpenSerpSearch.java
+        │   │   ├── OpenSerpSearchService.java
         │   │   ├── RdapService.java
         │   │   ├── SocialDiscoveryService.java
         │   │   └── TechScraperService.java

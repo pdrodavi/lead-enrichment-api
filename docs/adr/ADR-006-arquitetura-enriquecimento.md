@@ -56,20 +56,18 @@ LeadService (Orquestrador — Virtual Threads)
 
 | Serviço | Tecnologia | Dados Obtidos | Isolamento |
 |---|---|---|---|
-| `OpenSerpEnricher` | — | Orquestra 6 buscas Google paralelas + extrai dados (emails, telefones, menções) | `supplySearch()` com try-catch |
-| `DomainEnricher` | — | Orquestra DNS + RDAP + scraping + sociais com cache Caffeine | `executeSafely` próprio |
+| `OpenSerpEnricherService` | — | Orquestra 6 buscas Google paralelas + extrai dados (emails, telefones, menções) | `supplySearch()` com try-catch |
+| `DomainEnricherService` | — | Orquestra DNS + RDAP + scraping + sociais com cache Caffeine | `executeSafely` próprio |
 | `LeadDeletionService` | Spring Data JPA | Hard delete (1 query) | `parseNumericId` |
 | `DnsValidationService` | dnsjava 3.6 | MX, A, AAAA, CNAME, TXT | try-catch via `executeSafely` |
 | `TechScraperService` | Jsoup 1.17 | ~90 assinaturas de tecnologia (externalizadas em YAML), e-mails expostos, menções de nome | try-catch próprio |
 | `SocialDiscoveryService` | Jsoup 1.17 | Links para 31 plataformas (externalizadas em YAML), perfis com título/descrição | try-catch próprio |
 | `RdapService` | RestTemplate | Identity Digital + Registro.br (CPF/CNPJ .com.br) | try-catch próprio |
-| `OpenSerpSearch` | RestTemplate | Google Search API self-hosted (até 15 resultados, timeout 30s, proxy rotation) | try-catch próprio |
+| `OpenSerpSearchService` | RestTemplate | Google Search API self-hosted (até 15 resultados, timeout 30s, proxy rotation) | try-catch próprio |
 
 ### Camada de Configuração Externalizada
 
 Também foram criados utilitários estáticos (`DataParser`) e serviços auxiliares (`LeadDeletionService`) para manter o `LeadService` como orquestrador puro (~140 linhas).
-
-### Camada de Configuração Externalizada
 
 A refatoração introduziu classes `@ConfigurationProperties` para centralizar parâmetros antes hardcoded:
 
@@ -129,7 +127,7 @@ Antes (sequencial — ~soma dos tempos):          Agora (paralelo — ~max dos t
                                                                   ambas finalizam ─┘
 ```
 
-Também dentro do `OpenSerpEnricher`, as duas chamadas HTTP (`fetchResults` + `fetchDocuments`) foram paralelizadas:
+Também dentro do `OpenSerpEnricherService`, as duas chamadas HTTP (`fetchResults` + `fetchDocuments`) foram paralelizadas:
 
 ```java
 CompletableFuture<JsonArray> resultsFuture = CompletableFuture.supplyAsync(() -> fetchResults(name));

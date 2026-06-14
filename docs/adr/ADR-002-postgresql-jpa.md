@@ -54,8 +54,6 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
 ### Nota sobre Exclusão
 
 Originalmente o modelo previa soft delete com `deletedAt`. Após refatoração, a exclusão é **física** (hard delete via `LeadDeletionService.hardDelete()`), que executa `deleteById` em 1 query. O campo `deletedAt` e o status `DELETED` permanecem na entidade para uso pelo método `softDelete()` legado, mas o endpoint padrão (`DELETE /api/v1/leads/{id}`) utiliza hard delete.
-}
-```
 
 ## Consequências
 

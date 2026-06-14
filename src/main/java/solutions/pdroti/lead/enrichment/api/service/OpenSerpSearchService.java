@@ -147,6 +147,56 @@ public class OpenSerpSearchService {
     }
 
     /**
+     * Tenta obter do cache L1 (Caffeine) ou L2 (Redis). Se não encontrado,
+     * executa o {@code fetcher} para buscar, popula ambos os caches e retorna.
+     * <p>
+     * Padrão unificado usado por {@link #searchPerson}, {@link #search} e
+     * {@link #searchDocuments} para evitar duplicação do mesmo fluxo.
+     *
+     * @param cacheKey  chave única para o cache
+     * @param label     identificador amigável para logs
+     * @param fetcher   função que executa a busca real (chamada apenas em cache miss)
+     * @return JsonArray com resultados (nunca null)
+     */
+    private JsonArray getOrFetch(String cacheKey, String label, java.util.function.Supplier<JsonArray> fetcher) {
+        // L1 - Caffeine local
+        JsonArray cached = openSerpCache.getIfPresent(cacheKey);
+        if (cached != null) {
+            log.debug("Cache L1 hit para '{}' ({} resultados)", label, cached.size());
+            return gson.fromJson(cached.toString(), JsonArray.class);
+        }
+        log.info("Cache miss para '{}' — buscando...", label);
+
+        // L2 - Redis (leitura síncrona com timeout, nunca bloqueia >5s)
+        String fromRedis = redisCacheService.get(cacheKey);
+        if (fromRedis != null) {
+            try {
+                JsonArray parsed = gson.fromJson(fromRedis, JsonArray.class);
+                openSerpCache.put(cacheKey, parsed);
+                log.info("Cache L2 Redis hit para '{}' ({} resultados)", label, parsed.size());
+                return parsed;
+            } catch (Exception e) {
+                log.debug("Redis parse falhou para '{}'", label);
+            }
+        }
+
+        enforceRateLimit();
+        JsonArray results = fetcher.get();
+        JsonArray finalResults = results != null ? results : new JsonArray();
+
+        // Detecta se o conteúdo mudou em relação ao cache anterior (hash SHA-256)
+        contentTracker.trackContentChange(cacheKey, finalResults.toString());
+
+        // Cópia defensiva: serializa e desserializa para evitar corrupção do cache
+        JsonArray cacheCopy = gson.fromJson(finalResults.toString(), JsonArray.class);
+        openSerpCache.put(cacheKey, cacheCopy);
+        // Popula Redis (L2) de forma assíncrona — não bloqueia a resposta
+        redisCacheService.setAsync(cacheKey, 1800, finalResults.toString());
+        log.info("Cache populado [{}] — {} resultados", cacheKey, cacheCopy.size());
+        return finalResults;
+    }
+
+    /**
      * Retorna o próximo endpoint no esquema round-robin.
      */
     private EndpointEntry nextEndpoint() {
@@ -177,55 +227,16 @@ public class OpenSerpSearchService {
 
         String cacheKey = "person:" + name.toLowerCase().strip() + ":" + limit;
 
-        // L1 - Caffeine local
-        JsonArray cached = openSerpCache.getIfPresent(cacheKey);
-        if (cached != null) {
-            log.info("🔥 CACHE L1 HIT [{}] — {} resultados", cacheKey, cached.size());
-            // Retorna cópia defensiva para evitar corrupção do cache
-            return gson.fromJson(cached.toString(), JsonArray.class);
-        }
-        log.info("❌ CACHE MISS [{}] — buscando...", cacheKey);
-
-        // L2 - Redis (leitura síncrona com timeout, nunca bloqueia >5s)
-        String fromRedis = redisCacheService.get(cacheKey);
-        if (fromRedis != null) {
-            try {
-                JsonArray parsed = gson.fromJson(fromRedis, JsonArray.class);
-                openSerpCache.put(cacheKey, parsed);
-                log.info("Cache L2 Redis hit para '{}' ({} resultados)", name, parsed.size());
-                return parsed;
-            } catch (Exception e) {
-                log.debug("OpenSERP Redis parse falhou para '{}'", name);
-            }
-        }
-
-        enforceRateLimit();
-
-        String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8);
-        EndpointEntry ep = nextEndpoint();
-
-        log.debug("OpenSERP usando endpoint: {} (proxy: {})", ep.normalize(),
-                ep.proxy() != null ? "configurado" : "direto");
-
-        JsonArray results = fetchWithRetry(ep, encodedName, name, 0, limit);
-        if (results != null && !results.isEmpty()) {
-            log.debug("OpenSERP: {} resultados para '{}' (limit={})", results.size(), name, limit);
-        } else {
-            log.debug("OpenSERP: sem resultados para '{}' (limit={})", name, limit);
-        }
-        JsonArray finalResults = results != null ? results : new JsonArray();
-
-        // Detecta se o conteúdo mudou em relação ao cache anterior (hash SHA-256)
-        contentTracker.trackContentChange(cacheKey, finalResults.toString());
-
-        // Cópia defensiva: serializa e desserializa para evitar corrupção do cache
-        // (JsonArray é mutável — se o caller modificar a referência, o cache quebraria)
-        JsonArray cacheCopy = gson.fromJson(finalResults.toString(), JsonArray.class);
-        openSerpCache.put(cacheKey, cacheCopy);
-        // Popula Redis (L2) de forma assíncrona — não bloqueia a resposta
-        redisCacheService.setAsync(cacheKey, 1800, finalResults.toString());
-        log.info("📦 Cache populado [{}] — {} resultados", cacheKey, cacheCopy.size());
-        return finalResults;
+        return getOrFetch(cacheKey, name, () -> {
+            String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8);
+            EndpointEntry ep = nextEndpoint();
+            log.debug("OpenSERP usando endpoint: {} (proxy: {})", ep.normalize(),
+                    ep.proxy() != null ? "configurado" : "direto");
+            JsonArray results = fetchWithRetry(ep, encodedName, name, 0, limit);
+            log.debug("OpenSERP: {} resultados para '{}' (limit={})",
+                    results != null ? results.size() : 0, name, limit);
+            return results;
+        });
     }
 
     /**
@@ -506,40 +517,11 @@ public class OpenSerpSearchService {
 
         String cacheKey = "search:" + query.toLowerCase().strip() + ":" + limit;
 
-        // L1 - Caffeine local
-        JsonArray cached = openSerpCache.getIfPresent(cacheKey);
-        if (cached != null) {
-            log.debug("OpenSERP cache L1 hit para '{}' ({} resultados)", label, cached.size());
-            // Cópia defensiva para evitar corrupção do cache
-            return gson.fromJson(cached.toString(), JsonArray.class);
-        }
-        log.info("OpenSERP cache MISS para '{}'", label);
-
-        // L2 - Redis (leitura síncrona com timeout)
-        String fromRedis = redisCacheService.get(cacheKey);
-        if (fromRedis != null) {
-            try {
-                JsonArray parsed = gson.fromJson(fromRedis, JsonArray.class);
-                openSerpCache.put(cacheKey, parsed);
-                log.info("Cache L2 Redis hit para '{}'", label);
-                return parsed;
-            } catch (Exception e) {
-                log.debug("OpenSERP Redis parse falhou para '{}'", label);
-            }
-        }
-
-        enforceRateLimit();
-        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
-        EndpointEntry ep = nextEndpoint();
-        JsonArray results = fetchWithRetry(ep, encodedQuery, label, 0, limit);
-        JsonArray finalResults = results != null ? results : new JsonArray();
-
-        // Detecta se o conteúdo mudou em relação ao cache anterior
-        contentTracker.trackContentChange(cacheKey, finalResults.toString());
-
-        openSerpCache.put(cacheKey, finalResults);
-        redisCacheService.setAsync(cacheKey, 1800, finalResults.toString());
-        return finalResults;
+        return getOrFetch(cacheKey, label, () -> {
+            String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+            EndpointEntry ep = nextEndpoint();
+            return fetchWithRetry(ep, encodedQuery, label, 0, limit);
+        });
     }
 
     /**
@@ -557,53 +539,27 @@ public class OpenSerpSearchService {
 
         String cacheKey = "docs:" + name.toLowerCase().strip() + ":" + limit;
 
-        // L1 - Caffeine local
-        JsonArray cached = openSerpCache.getIfPresent(cacheKey);
-        if (cached != null) {
-            log.debug("OpenSERP cache L1 hit para docs '{}' ({} resultados)", name, cached.size());
-            // Cópia defensiva para evitar corrupção do cache
-            return gson.fromJson(cached.toString(), JsonArray.class);
-        }
-        log.info("OpenSERP cache MISS para docs '{}'", name);
+        return getOrFetch(cacheKey, "docs " + name, () -> {
+            JsonArray all = new JsonArray();
+            String[] fileTypes = {"pdf", "doc", "docx"};
 
-        // L2 - Redis (leitura síncrona com timeout)
-        String fromRedis = redisCacheService.get(cacheKey);
-        if (fromRedis != null) {
-            try {
-                JsonArray parsed = gson.fromJson(fromRedis, JsonArray.class);
-                openSerpCache.put(cacheKey, parsed);
-                log.info("Cache L2 Redis hit para docs '{}'", name);
-                return parsed;
-            } catch (Exception e) {
-                log.debug("OpenSERP Redis parse falhou para docs '{}'", name);
+            for (String fileType : fileTypes) {
+                enforceRateLimit();
+                String query = "\"" + name + "\" filetype:" + fileType;
+                String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+                EndpointEntry ep = nextEndpoint();
+
+                JsonArray results = fetchWithRetry(ep, encodedQuery,
+                        name + " filetype:" + fileType, 0, limit);
+                if (results != null && !results.isEmpty()) {
+                    log.debug("OpenSERP docs ({}): {} resultados para '{}'", fileType, results.size(), name);
+                    all.addAll(results);
+                }
             }
-        }
 
-        JsonArray all = new JsonArray();
-        String[] fileTypes = {"pdf", "doc", "docx"};
-
-        for (String fileType : fileTypes) {
-            enforceRateLimit();
-            String query = "\"" + name + "\" filetype:" + fileType;
-            String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
-            EndpointEntry ep = nextEndpoint();
-
-            JsonArray results = fetchWithRetry(ep, encodedQuery,
-                    name + " filetype:" + fileType, 0, limit);
-            if (results != null && !results.isEmpty()) {
-                log.debug("OpenSERP docs ({}): {} resultados para '{}'", fileType, results.size(), name);
-                all.addAll(results);
-            }
-        }
-
-        log.debug("OpenSERP documentos: {} resultados no total para '{}'", all.size(), name);
-
-        // Detecta se o conteúdo mudou em relação ao cache anterior
-        contentTracker.trackContentChange(cacheKey, all.toString());
-
-        openSerpCache.put(cacheKey, all);
-        redisCacheService.setAsync(cacheKey, 1800, all.toString());
-        return all;
+            log.debug("OpenSERP documentos: {} resultados no total para '{}'", all.size(), name);
+            return all;
+        });
     }
 
     /**

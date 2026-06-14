@@ -179,6 +179,16 @@ public class LeadController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, Object>> deleteLead(@PathVariable String id) {
+        // Evita cache stale: remove entrada do cache ANTES de deletar
+        var oldLead = leadService.findById(id);
+        oldLead.ifPresent(lead -> {
+            var cache = cacheManager.getCache("enrich-result");
+            if (cache != null) {
+                cache.evict(lead.getEmail());
+                log.debug("Cache evict para email do lead deletado: {}", EmailUtils.mask(lead.getEmail()));
+            }
+        });
+
         boolean deleted = leadDeletionService.hardDelete(id);
         if (deleted) {
             log.info("DELETE /{} permanently deleted", id);

@@ -10,8 +10,11 @@ import solutions.pdroti.lead.enrichment.api.util.DataParser;
 import solutions.pdroti.lead.enrichment.api.util.EmailUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -60,6 +63,7 @@ public class LeadService {
     private final LeadRepository leadRepository;
     private final OpenSerpEnricherService openSerpEnricherService;
     private final DomainEnricherService domainEnricher;
+    private final DotComScrapingService dotComScrapingService;
     private final TransactionTemplate transactionTemplate;
 
     @Qualifier("enrichmentExecutor")
@@ -103,8 +107,7 @@ public class LeadService {
         log.info("Enriquecendo lead: nome={} email={} domain={}", name, EmailUtils.mask(email), domain);
 
         if (domain == null) {
-            domain = DataParser.extractDomainFromEmail(email);
-            log.info("Domínio extraído do e-mail: {}", domain);
+            log.info("Domínio não informado — buscará redes sociais, telefones e e-mails em sites .com/.com.br via OpenSERP");
         }
 
         Lead existing = leadRepository.findByEmailHash(EmailUtils.hash(email)).orElse(null);
@@ -167,12 +170,23 @@ public class LeadService {
         Lead lead = findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Lead não encontrado: " + id));
 
+        // Verifica se o novo e-mail já pertence a OUTRO lead (evita ConstraintViolation no email_hash)
+        if (email != null && !email.equals(lead.getEmail())) {
+            String newHash = EmailUtils.hash(email);
+            leadRepository.findByEmailHash(newHash)
+                    .filter(existing -> !existing.getId().equals(lead.getId()))
+                    .ifPresent(existing -> {
+                        throw new IllegalArgumentException(
+                                "E-mail já cadastrado para outro lead: ID=" + existing.getId());
+                    });
+        }
+
         lead.setName(name);
         lead.setEmail(email);
-        lead.setDomain(domain != null ? domain : DataParser.extractDomainFromEmail(email));
+        lead.setDomain(domain);
         lead.setUpdatedAt(LocalDateTime.now());
 
-        return performFullEnrichment(lead, email, lead.getDomain(), name);
+        return performFullEnrichment(lead, email, domain, name);
     }
 
     // ==================== Métodos Privados ====================
@@ -192,6 +206,10 @@ public class LeadService {
 
         String logId = EmailUtils.mask(email);
         if (logId == null) logId = name;
+
+        // Preserva dados antigos antes de resetar — se o reenriquecimento
+        // retornar vazio (ex: CAPTCHA), os dados anteriores são mantidos
+        var snapshot = EnrichmentSnapshotManager.takeSnapshot(lead);
 
         domainEnricher.resetEnrichmentData(lead);
 
@@ -216,12 +234,101 @@ public class LeadService {
                 .orTimeout(2, TimeUnit.MINUTES)
                 .join();
 
+        // Quando nenhum domínio foi informado, busca redes sociais, telefones
+        // e e-mails nos sites .com/.com.br encontrados pelo OpenSERP
+        if (!StringUtils.hasText(domain)) {
+            dotComScrapingService.scrapeDotComSites(lead, name);
+        }
+
+        // Filtra socialLinks para manter apenas os que correspondem ao
+        // nome exato ou e-mail exato da pessoa
+        List<String> filteredSocialLinks = filterSocialLinksByPerson(
+                lead.getSocialLinks(), lead.getName(), lead.getEmail());
+        lead.setSocialLinks(filteredSocialLinks);
+
+        // Se o reenriquecimento não encontrou dados novos (ex: CAPTCHA),
+        // restaura os dados anteriores para não perder informação
+        snapshot.restoreIfEmpty(lead);
+
         lead.setUpdatedAt(LocalDateTime.now());
 
         // Transação curta — apenas o save, sem HTTP calls
         Lead savedLead = transactionTemplate.execute(status -> leadRepository.save(lead));
         log.info("Lead enriquecido: {}", logId);
         return savedLead;
+    }
+
+    /**
+     * Filtra a lista de links de redes sociais para manter apenas aqueles
+     * cuja URL contenha o nome exato ou o e-mail exato da pessoa.
+     * <p>
+     * Critérios de correspondência (case-insensitive):
+     * <ul>
+     *   <li>Parte local do e-mail (ex: "joao.silva" de "joao.silva@exemplo.com")</li>
+     *   <li>Cada palavra do nome com 3+ caracteres (ex: "joao", "silva")</li>
+     *   <li>Nome completo (ex: "joaosilva", "joao-silva", "joão silva")</li>
+     * </ul>
+     *
+     * @param socialLinks lista original de links sociais
+     * @param name        nome completo da pessoa
+     * @param email       e-mail completo da pessoa
+     * @return lista filtrada contendo apenas links que correspondem à pessoa
+     */
+    private static List<String> filterSocialLinksByPerson(List<String> socialLinks, String name, String email) {
+        if (socialLinks == null || socialLinks.isEmpty()) return new ArrayList<>();
+        if (name == null && email == null) return new ArrayList<>();
+
+        // Monta termos de busca a partir do nome e email
+        Set<String> searchTerms = new LinkedHashSet<>();
+        String lowerName = name != null ? name.toLowerCase().strip() : "";
+        String lowerEmail = email != null ? email.toLowerCase().strip() : "";
+
+        // Parte local do e-mail (ex: "joao.silva" de "joao.silva@gmail.com")
+        if (lowerEmail.contains("@")) {
+            String localPart = lowerEmail.substring(0, lowerEmail.indexOf("@"));
+            if (!localPart.isBlank()) {
+                searchTerms.add(localPart);
+                // Também tenta sem pontos (ex: "joaosilva")
+                searchTerms.add(localPart.replace(".", ""));
+                searchTerms.add(localPart.replace("-", ""));
+                searchTerms.add(localPart.replace("_", ""));
+            }
+        }
+
+        // Palavras do nome com 3+ caracteres
+        if (!lowerName.isBlank()) {
+            // Remove acentos para comparação
+            String normalized = java.text.Normalizer.normalize(lowerName, java.text.Normalizer.Form.NFD)
+                    .replaceAll("[\\u0300-\\u036f]", "");
+            for (String word : normalized.split("\\s+")) {
+                if (word.length() >= 3) {
+                    searchTerms.add(word);
+                }
+            }
+            // Nome completo sem espaços
+            String fullNameNoSpace = normalized.replaceAll("\\s+", "");
+            if (fullNameNoSpace.length() >= 5) {
+                searchTerms.add(fullNameNoSpace);
+            }
+            // Nome completo com hífen
+            String fullNameHyphen = normalized.replaceAll("\\s+", "-");
+            searchTerms.add(fullNameHyphen);
+            // Nome completo com underline
+            String fullNameUnderscore = normalized.replaceAll("\\s+", "_");
+            searchTerms.add(fullNameUnderscore);
+        }
+
+        log.debug("Termos para filtro de socialLinks: {}", searchTerms);
+
+        // Filtra URLs que contenham qualquer termo — retorna ArrayList mutável
+        // para o Hibernate conseguir gerenciar o @ElementCollection
+        return socialLinks.stream()
+                .filter(link -> {
+                    if (link == null) return false;
+                    String lowerLink = link.toLowerCase();
+                    return searchTerms.stream().anyMatch(lowerLink::contains);
+                })
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
     }
 
     private Lead createNewLead(String email, String domain, String name) {

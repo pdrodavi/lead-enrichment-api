@@ -2,7 +2,7 @@
 
 ## Status
 
-**Atualizado (Jun/2026)** — A implementação atual utiliza **hard delete** (exclusão física).
+**Atualizado (Jun/2026)** — A implementação atual utiliza hard delete (exclusão física).
 
 ## Contexto
 
@@ -106,11 +106,6 @@ utiliza hard delete desde a refatoração.
 | Soft delete com expurgo | Complexidade adicional (job schedulado), ocupação de espaço |
 | Tabela de log separada | Complexidade desnecessária; logs da aplicação são suficientes |
 | GDPR-style anonymization | Dados enriquecidos perdem valor se anonimizados |
-
-## Referências
-
-- [LGPD Art. 18, VI — Direito ao esquecimento](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm)
-- [LGPD Art. 15 — Término do tratamento de dados](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm)
 
 ## Referências
 

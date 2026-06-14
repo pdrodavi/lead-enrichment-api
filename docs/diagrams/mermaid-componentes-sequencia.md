@@ -1,4 +1,4 @@
-# Diagrama de Componentes e Sequência
+# Diagrama de Componentes e Sequência — Lead Enrichment API
 
 ## Diagrama de Componentes (Atualizado)
 
@@ -130,6 +130,7 @@ classDiagram
         +List~String~ socialLinks
         +List~String~ socialProfileSummaries
         +List~String~ exposedEmails
+        +List~String~ exposedPhones
         +int dorkFindings
         +List~String~ nameMentions
         +String rdapRawData

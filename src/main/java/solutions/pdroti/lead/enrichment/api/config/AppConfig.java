@@ -82,7 +82,6 @@ public class AppConfig {
     }
 
     /**
-    /**
      * HttpClient compartilhado com connection pooling.
      * Reutilizado por RdapService, TechScraperService e SocialDiscoveryService
      * para evitar criar uma nova conexão TCP a cada requisição.

@@ -1,97 +1,124 @@
-# Documentação da Lead Enrichment API
+# Lead Enrichment API — Documentação Técnica
 
-## Sobre
+## Visão Geral
 
-API para enriquecimento de leads com dados públicos da internet. A partir de um nome e e-mail, descobre informações sobre o domínio, tecnologias utilizadas, presença em redes sociais e dados de registro de domínio — tudo em conformidade com a LGPD.
+API corporativa para enriquecimento de leads a partir de dados públicos da internet. A partir de um nome e e-mail, o sistema orquestra múltiplos serviços especializados para descobrir informações sobre domínio, stack tecnológica, presença em redes sociais e dados de registro de domínio — operando em conformidade com os requisitos da LGPD.
 
-## Índice da Documentação
+**Público-alvo:** Arquitetos de software, tech leads e engenheiros responsáveis pela evolução, integração e governança do sistema.
 
-| Documento | Descrição |
+---
+
+## Navegação da Documentação
+
+| Documento | Conteúdo |
 |---|---|
-| [📐 Arquitetura](./docs/architecture.md) | Diagramas, fluxos, stack tecnológica e estrutura do projeto |
-| [📡 Guia da API](./docs/api-guide.md) | Endpoints, parâmetros, exemplos de requisição/resposta e erros |
-| [🚀 Guia de Deploy](./docs/deployment.md) | Docker, variáveis de ambiente, produção e troubleshooting |
-| [🔒 Segurança e LGPD](./docs/security-lgpd.md) | Criptografia, mascaramento, autenticação, exclusão permanente e compliance |
-| [📜 OpenAPI Spec (YAML)](./docs/openapi.yaml) | Documentação OpenAPI 3.0 completa para geração de clientes |
-| [🔧 Referência Técnica](./docs/TECHNICAL_REFERENCE.md) | Arquitetura detalhada, camadas, pipeline, performance, dependências |
-| [👋 Guia de Onboarding](./docs/ONBOARDING.md) | Configuração do ambiente, fluxo de desenvolvimento, troubleshooting |
+| [📐 Arquitetura do Sistema](./docs/architecture.md) | Diagramas estruturais, fluxos de dados, stack tecnológica e organização do projeto |
+| [📡 Guia da API](./docs/api-guide.md) | Contratos dos endpoints, parâmetros, exemplos de requisição/resposta e código de erros |
+| [🚀 Guia de Implantação](./docs/deployment.md) | Docker Compose, variáveis de ambiente, estratégia de produção e troubleshooting |
+| [🔒 Segurança e LGPD](./docs/security-lgpd.md) | Criptografia AES-128-GCM, mascaramento de PII, autenticação por API Key e compliance |
+| [📜 Contrato OpenAPI (YAML)](./docs/openapi.yaml) | Especificação OpenAPI 3.0 completa para geração automatizada de clientes |
+| [🔧 Referência Técnica](./docs/TECHNICAL_REFERENCE.md) | Arquitetura em camadas, pipeline de enriquecimento, performance e dependências |
+| [👋 Guia de Onboarding](./docs/ONBOARDING.md) | Configuração do ambiente local, fluxo de desenvolvimento e troubleshooting |
+
+---
+
 ## Architecture Decision Records (ADRs)
 
-| ID | Título | Decisão Principal |
+Registro formal de decisões arquiteturais com contexto, alternativas consideradas e justificativas.
+
+| ID | Decisão | Escopo |
 |---|---|---|
-| [ADR-001](./docs/adr/ADR-001-stack-tecnologica.md) | Stack Tecnológica | **Java 21** + Spring Boot 3.3 + Maven + Lombok |
-| [ADR-002](./docs/adr/ADR-002-postgresql-jpa.md) | PostgreSQL + Spring Data JPA | PostgreSQL 16 com ddl-auto=update e @ElementCollection |
-| [ADR-003](./docs/adr/ADR-003-criptografia-pii-aes-gcm.md) | Criptografia de PII (LGPD) | AES-128-GCM via AttributeConverter + SHA-256 hash para consulta |
-| [ADR-004](./docs/adr/ADR-004-soft-delete-lgpd.md) | Exclusão para LGPD | **Hard delete** via LeadDeletionService (1 query) |
-| [ADR-005](./docs/adr/ADR-005-api-key-autenticacao.md) | Autenticação via API Key | Servlet Filter com validação de header X-API-KEY |
-| [ADR-006](./docs/adr/ADR-006-arquitetura-enriquecimento.md) | Arquitetura de Enriquecimento | Orquestração centralizada com 12 serviços especializados e isolamento de falhas |
-| [ADR-007](./docs/adr/ADR-007-springdoc-openapi.md) | Documentação com SpringDoc/OpenAPI | Swagger UI auto-gerado com schema de segurança documentado |
-| [ADR-008](./docs/adr/ADR-008-mascaramento-dados-lgpd.md) | Mascaramento de Dados (LGPD) | EmailUtils com mascaramento centralizado em logs e respostas |
-| [ADR-009](./docs/adr/ADR-009-tratamento-global-erros.md) | Tratamento Global de Erros | @RestControllerAdvice com JSON padronizado |
-| [ADR-010](./docs/adr/ADR-010-configuracao-externalizada.md) | Configuração Externalizada | @ConfigurationProperties para TechScraper, SocialDiscovery e OpenSerpProxy |
+| [ADR-001](./docs/adr/ADR-001-stack-tecnologica.md) | **Java 21** + Spring Boot 3.3 + Maven + Lombok | Stack tecnológica |
+| [ADR-002](./docs/adr/ADR-002-postgresql-jpa.md) | PostgreSQL 16 com `ddl-auto=update` e `@ElementCollection` | Persistência |
+| [ADR-003](./docs/adr/ADR-003-criptografia-pii-aes-gcm.md) | AES-128-GCM via `AttributeConverter` + SHA-256 hash para consulta | Proteção de PII |
+| [ADR-004](./docs/adr/ADR-004-soft-delete-lgpd.md) | **Hard delete** via `LeadDeletionService` (única consulta) | Exclusão LGPD |
+| [ADR-005](./docs/adr/ADR-005-api-key-autenticacao.md) | Servlet Filter com validação do header `X-API-KEY` | Autenticação |
+| [ADR-006](./docs/adr/ADR-006-arquitetura-enriquecimento.md) | Orquestração centralizada — 12 serviços especializados com isolamento de falhas | Pipeline de enriquecimento |
+| [ADR-007](./docs/adr/ADR-007-springdoc-openapi.md) | Swagger UI auto-gerado via SpringDoc com schema de segurança documentado | Documentação da API |
+| [ADR-008](./docs/adr/ADR-008-mascaramento-dados-lgpd.md) | `EmailUtils` com mascaramento centralizado em logs e respostas | Privacidade de dados |
+| [ADR-009](./docs/adr/ADR-009-tratamento-global-erros.md) | `@RestControllerAdvice` com resposta JSON padronizada | Tratamento de erros |
+| [ADR-010](./docs/adr/ADR-010-configuracao-externalizada.md) | `@ConfigurationProperties` para módulos TechScraper, SocialDiscovery e OpenSerpProxy | Configuração externalizada |
 
-## Diagramas
-
-### Mermaid (renderização nativa no GitHub/VS Code)
-
-| Diagrama | Arquivo | Conteúdo |
-|---|---|---|
-| [🟦 Componentes + Sequência](./docs/diagrams/mermaid-componentes-sequencia.md) | `docs/diagrams/mermaid-componentes-sequencia.md` | Diagrama de componentes (4 camadas), diagrama de classes (modelo de domínio) e diagrama de sequência (enriquecimento completo) |
-| [🔀 Fluxo de Enriquecimento](./docs/diagrams/mermaid-fluxo-enriquecimento.md) | `docs/diagrams/mermaid-fluxo-enriquecimento.md` | Diagrama de estados do Lead (PENDING → ENRICHED → DELETED), fluxograma completo vs. reduzido e diagrama de pacotes |
-| [⚙️ Fluxo de Processamento](./docs/diagrams/mermaid-fluxo-processamento-api.md) | `docs/diagrams/mermaid-fluxo-processamento-api.md` | Fluxograma detalhado de requisição/resposta para todos os 6 endpoints, diagrama de contexto, estados do hard delete e mapa de endpoints |
-
-> 💡 **Dica:** Os diagramas Mermaid renderizam automaticamente no GitHub e no VS Code (com extensão Mermaid).
+> Para arquitetos, recomenda-se iniciar pelos **ADRs 001, 003, 006 e 008**, que definem as decisões estruturais mais relevantes.
 
 ---
 
-## Refatorações Realizadas
+## Diagramas da Arquitetura
 
-Após ciclos de revisão de código, dezenas de melhorias foram implementadas:
+Diagramas em Mermaid com renderização nativa no GitHub e no VS Code.
 
-| Categoria | Principais correções |
-|---|---|
-| 🔴 Segurança | Credenciais removidas para `.env`, criptografia sem fallback, log + throw na descriptografia, API Key via filter |
-| 🟢 Java 21 | Migração JDK 17 → 21 com Virtual Threads (`Executors.newVirtualThreadPerTaskExecutor()`) |
-| 🟢 Observabilidade | OpenTelemetry + Jaeger (`management.otlp.tracing.endpoint`) com captura de request/response body |
-| 🟢 Performance | Cache Caffeine (7 caches) + Redis L2, ContentTracker (hash SHA-256), HTTP Connection Pooling (HttpClient 5), compressão Gzip, paginação |
-| 🔴 Performance | Consultas DNS paralelas (5 tipos), 6 buscas OpenSERP em paralelo, merge seguro contra race condition, cópia defensiva em todos os 7 métodos de cache |
-| 🟡 Infra | Docker Compose com Jaeger, Redis, 3 OpenSERP, rede npm, proxy rotation + circuit breaker |
-| 🟡 Arquitetura | `LeadService` extraído em `OpenSerpEnricher`, `DomainEnricher`, `LeadDeletionService`, `RedisCacheService`, `DataParser` |
-| 🟡 JPA | `@Fetch(FetchMode.SUBSELECT)` para eliminar N+1, `@Version` para lock otimista, `@BatchSize` |
-| 🔵 Manutenibilidade | `@Getter @Setter` no `Lead`, `@ConfigurationPropertiesScan`, `@EnableCaching`, `@EnableSpringDataWebSupport(VIA_DTO)` |
-| 🔵 Cache | `@Cacheable("enrich-result")` no endpoint, `@CacheEvict` manual no update (old + new email) |
-| 📚 Documentação | 10 ADRs, diagramas Mermaid atualizados com cache L1+L2 e merge seguro, guias revisados |
+| Diagrama | Arquivo | Abrangência |
+|---|---|---|
+| [🟦 Componentes e Sequência](./docs/diagrams/mermaid-componentes-sequencia.md) | `docs/diagrams/mermaid-componentes-sequencia.md` | Diagrama de componentes (4 camadas), modelo de domínio e sequência completa de enriquecimento |
+| [🔀 Fluxo de Enriquecimento](./docs/diagrams/mermaid-fluxo-enriquecimento.md) | `docs/diagrams/mermaid-fluxo-enriquecimento.md` | Máquina de estados do Lead (PENDING → ENRICHED → DELETED) e fluxograma reduzido vs. completo |
+| [⚙️ Fluxo de Processamento](./docs/diagrams/mermaid-fluxo-processamento-api.md) | `docs/diagrams/mermaid-fluxo-processamento-api.md` | Fluxo requisição/resposta para todos os 6 endpoints e mapa de contexto |
 
 ---
 
-## Quick Start
+## Evolução Arquitetural
+
+Aprimoramentos implementados ao longo de ciclos de revisão, organizados por domínio arquitetural:
+
+### Segurança
+- Credenciais externalizadas para `.env` (remoção de valores hard-coded)
+- Criptografia AES-128-GCM sem fallback e com log + throw em falha de descriptografia
+- Autenticação por API Key via Servlet Filter com validação de header
+
+### Plataforma e Runtime
+- Migração JDK 17 → 21 com Virtual Threads (`Executors.newVirtualThreadPerTaskExecutor()`)
+- Observabilidade com OpenTelemetry + Jaeger (`management.otlp.tracing.endpoint`)
+- Captura de corpo de requisição e resposta para tracing distribuído
+
+### Performance e Concorrência
+- Cache em dois níveis: Caffeine (L1, 7 caches) + Redis (L2)
+- ContentTracker com hash SHA-256 para detecção de conteúdo duplicado
+- HTTP Connection Pooling com HttpClient 5
+- Compressão Gzip e paginação em endpoints de listagem
+- Consultas DNS paralelas (5 tipos) e 6 buscas OpenSERP simultâneas
+- Merge seguro contra race condition com cópia defensiva em todos os métodos de cache
+
+### Refatoração da Arquitetura
+- Extração de responsabilidades: `LeadService` decomposto em `OpenSerpEnricher`, `DomainEnricher`, `LeadDeletionService`, `RedisCacheService` e `DataParser`
+- Eliminação de N+1 com `@Fetch(FetchMode.SUBSELECT)`, lock otimista com `@Version` e `@BatchSize`
+
+### Manutenibilidade
+- Adoção de `@Getter`/`@Setter` no modelo `Lead`, `@ConfigurationPropertiesScan`, `@EnableCaching`, `@EnableSpringDataWebSupport(VIA_DTO)`
+- Cache declarativo com `@Cacheable("enrich-result")` e `@CacheEvict` manual em atualizações e exclusões
+- 10 ADRs documentando decisões arquiteturais
+
+### Enriquecimento de Dados
+- Campo `exposedPhones` adicionado ao modelo `Lead` e DTO `DiscoveryData` (telefones expostos)
+- Deduplicação de `nameMentions` por URL, `foundDocuments`/`discoveredUrls` e itens OpenSERP
+- Filtragem de `socialLinks` por nome/e-mail da pessoa (`filterSocialLinksByPerson`)
+- Snapshot/Restore automático via `EnrichmentSnapshotManager`: se o reenriquecimento falhar (ex: CAPTCHA), dados anteriores são preservados
+- Busca em sites `.com`/`.com.br` via `DotComScrapingService` quando nenhum domínio é informado
+
+---
+
+## Início Rápido
 
 ```bash
-# 1. Configure as variáveis de ambiente
+# 1. Configurar variáveis de ambiente
 cp .env.example .env
-# Edite .env com seus valores reais
+# Editar .env com os valores reais
 
-# 2. Execute com Docker Compose
+# 2. Executar com Docker Compose
 docker compose up --build
 
-# 3. Ou execute localmente com JDK 21
+# 3. Executar localmente com JDK 21
 build-jdk21.bat spring-boot:run -Dmaven.test.skip=true
-# Ou: Ctrl+Shift+B no VS Code (task configurada)
 
-# 4. Acesse a API
+# 4. Testar o endpoint de enriquecimento
 curl -H "X-API-KEY: $(grep API_KEY .env | cut -d= -f2)" \
   -H "Content-Type: application/json" \
   -X POST http://localhost:${PORT:-8081}/api/v1/leads/enrich \
   -d '{"email":"contato@exemplo.com","name":"João Silva"}'
 
-# 5. Swagger UI
-# Abra http://localhost:${PORT:-8081}/swagger-ui.html
-
-# 6. Jaeger UI
-# Abra http://localhost:16686
+# 5. Swagger UI: http://localhost:${PORT:-8081}/swagger-ui.html
+# 6. Jaeger UI:  http://localhost:16686
 ```
 
-## Stack Principal
+## Stack Tecnológica
 
 ```mermaid
 mindmap
@@ -117,30 +144,30 @@ mindmap
       EncryptionService
     Observabilidade
       OpenTelemetry
-      Jaeger - tracing
-      Request e Response body capture
+      Jaeger - tracing distribuído
+      Captura de corpo (request/response)
     Otimizações
       Cache Caffeine + Redis L2
       ContentTracker - hash SHA-256
       HTTP Connection Pooling
       Virtual Threads - Java 21
-      Gzip Compression
+      Compressão Gzip
       Paginação
-      LeadResponseSummary - list leve
+      LeadResponseSummary - listagem leve
     Segurança
       AES-128-GCM
       SHA-256
       API Key
       Hard Delete
-    Infra
+    Infraestrutura
       Docker Compose
       Redis
       Jaeger
-      3x OpenSERP
+      3 instâncias OpenSERP
       Proxy rotation
       Circuit breaker
 ```
 
 ## Licença
 
-Copyright © 2026 pdroti.solutions
+Copyright © 2026 — pdroti.solutions

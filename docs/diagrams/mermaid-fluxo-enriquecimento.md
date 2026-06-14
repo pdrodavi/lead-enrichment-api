@@ -1,4 +1,4 @@
-# Diagrama UML — Fluxo de Enriquecimento
+# Diagrama UML — Fluxo de Enriquecimento — Lead Enrichment API
 
 ## Diagrama de Estado do Lead
 
@@ -74,7 +74,7 @@ flowchart TD
 
     FLUXO_OPENSERP --> MERGE
 
-    MERGE["🔀 Merge seguro (LinkedHashSet)<br/>socialLinks + nameMentions + exposedEmails<br/>foundDocuments + discoveredUrls"]
+    MERGE["🔀 Merge seguro (LinkedHashSet)<br/>socialLinks + nameMentions + exposedEmails + exposedPhones<br/>foundDocuments + discoveredUrls"]
 
     MERGE["Mesclar todos os dados coletados"] --> ENCRYPT["Criptografar e-mail (AES-128-GCM)"]
     ENCRYPT --> PERSIST["Persistir Lead no PostgreSQL<br/>FetchType: LAZY"]

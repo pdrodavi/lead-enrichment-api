@@ -8,6 +8,7 @@ import solutions.pdroti.lead.enrichment.api.model.Lead;
 import solutions.pdroti.lead.enrichment.api.util.EmailUtils;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -61,7 +62,8 @@ public record LeadResponse(
      * @return LeadResponse com dados mascarados e agrupados
      */
     public static LeadResponse fromEntity(Lead lead, ObjectMapper mapper) {
-        List<String> mentions = lead.getNameMentions() != null ? lead.getNameMentions() : List.of();
+        List<String> mentions = lead.getNameMentions() != null
+                ? deduplicateMentions(lead.getNameMentions()) : List.of();
 
         DnsRecords dns = buildDnsRecords(lead);
         DiscoveryData discovery = buildDiscoveryData(lead, mentions, mapper);
@@ -107,40 +109,82 @@ public record LeadResponse(
         );
     }
 
-    /** Constrói o sub-record DiscoveryData a partir dos campos do lead. */
+    /** Constrói o sub-record DiscoveryData a partir dos campos do lead (valores deduplicados internamente). */
     private static DiscoveryData buildDiscoveryData(Lead lead, List<String> mentions, ObjectMapper mapper) {
         return new DiscoveryData(
                 lead.getTechnologies() != null ? lead.getTechnologies() : List.of(),
                 lead.getSocialLinks() != null ? lead.getSocialLinks() : List.of(),
                 lead.getSocialProfileSummaries() != null ? lead.getSocialProfileSummaries() : List.of(),
                 lead.getExposedEmails() != null ? lead.getExposedEmails() : List.of(),
+                lead.getExposedPhones() != null ? lead.getExposedPhones() : List.of(),
                 mentions,
                 extractUrlsFromMentions(mentions),
                 lead.getDorkFindings(),
-                lead.getFoundDocuments() != null ? lead.getFoundDocuments() : List.of(),
-                lead.getDiscoveredUrls() != null ? lead.getDiscoveredUrls() : List.of(),
+                deduplicate(lead.getFoundDocuments()),
+                deduplicate(lead.getDiscoveredUrls()),
                 buildOpenSerpResult(lead, mapper)
         );
     }
 
-    /** Extrai as URLs do campo nameMentions. */
+    /** Extrai as URLs do campo nameMentions (deduplicadas). */
     private static List<String> extractUrlsFromMentions(List<String> mentions) {
         if (mentions == null || mentions.isEmpty()) return List.of();
-        List<String> urls = new ArrayList<>();
-        for (String mention : mentions) {
-            var matcher = URL_IN_MENTION.matcher(mention);
-            while (matcher.find()) {
-                urls.add(matcher.group());
-            }
-        }
-        return urls;
+        return mentions.stream()
+                .flatMap(mention -> {
+                    var matcher = URL_IN_MENTION.matcher(mention);
+                    List<String> found = new ArrayList<>();
+                    while (matcher.find()) {
+                        found.add(matcher.group());
+                    }
+                    return found.stream();
+                })
+                .distinct()
+                .toList();
     }
 
-    /** Converte o JSON estruturado do OpenSERP em objeto tipado para o response. */
+    /** Deduplica uma lista mantendo a ordem de inserção. */
+    private static List<String> deduplicate(List<String> list) {
+        if (list == null || list.isEmpty()) return List.of();
+        return new ArrayList<>(new LinkedHashSet<>(list));
+    }
+
+    /**
+     * Deduplica nameMentions mantendo apenas a primeira ocorrência de cada URL.
+     * Ex: "https://exemplo.com (Geral)" e "https://exemplo.com (Contato)" → só a primeira.
+     */
+    private static List<String> deduplicateMentions(List<String> mentions) {
+        if (mentions == null || mentions.isEmpty()) return List.of();
+        LinkedHashSet<String> seenUrls = new LinkedHashSet<>();
+        List<String> result = new ArrayList<>();
+        for (String mention : mentions) {
+            var matcher = URL_IN_MENTION.matcher(mention);
+            if (matcher.find()) {
+                String url = matcher.group().toLowerCase();
+                if (seenUrls.add(url)) {
+                    result.add(mention);
+                }
+            } else {
+                result.add(mention); // preserva menções sem URL
+            }
+        }
+        return result;
+    }
+
+    /** Converte o JSON estruturado do OpenSERP em objeto tipado para o response (items deduplicados por URL). */
     private static SerpSearchResult buildOpenSerpResult(Lead lead, ObjectMapper mapper) {
         if (lead.getOpenSerpRawData() == null) return null;
         try {
-            return mapper.readValue(lead.getOpenSerpRawData(), SerpSearchResult.class);
+            SerpSearchResult result = mapper.readValue(lead.getOpenSerpRawData(), SerpSearchResult.class);
+            if (result.items() == null || result.items().isEmpty()) return result;
+            // Deduplica items por URL mantendo a ordem e a primeira ocorrência
+            List<SerpResultItem> deduplicated = new ArrayList<>();
+            java.util.LinkedHashSet<String> seenUrls = new java.util.LinkedHashSet<>();
+            for (SerpResultItem item : result.items()) {
+                if (item.url() != null && seenUrls.add(item.url().toLowerCase())) {
+                    deduplicated.add(item);
+                }
+            }
+            return new SerpSearchResult(result.query(), deduplicated.size(), deduplicated);
         } catch (Exception e) {
             log.error("Erro ao deserializar openSerpRawData para lead ID {}: {}", lead.getId(), e.getMessage());
             return SerpSearchResult.empty(null);

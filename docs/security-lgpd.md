@@ -1,4 +1,4 @@
-# Segurança e Conformidade LGPD
+# Segurança e Conformidade LGPD — Lead Enrichment API
 
 ## Visão Geral
 
@@ -230,6 +230,8 @@ LeadDeletionService.hardDelete(id)
 Originalmente a API implementava soft delete (exclusão lógica com status `DELETED`
 e campo `deletedAt`). O método `LeadDeletionService.softDelete()` ainda existe
 para referência, mas o endpoint padrão utiliza hard delete desde a refatoração.
+
+> Para detalhes completos sobre a decisão arquitetural de exclusão, consulte o [ADR-004](../adr/ADR-004-soft-delete-lgpd.md).
 
 ---
 

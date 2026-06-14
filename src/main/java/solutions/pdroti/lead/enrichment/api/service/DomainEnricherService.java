@@ -1,6 +1,7 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import solutions.pdroti.lead.enrichment.api.dto.RdapData;
@@ -31,6 +32,7 @@ import java.util.function.Supplier;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class DomainEnricherService {
 
     private final DnsValidationService dnsValidationService;
@@ -38,18 +40,6 @@ public class DomainEnricherService {
     private final SocialDiscoveryService socialDiscoveryService;
     private final RdapService rdapService;
     private final Cache<String, List<String>> techCache;
-
-    public DomainEnricherService(DnsValidationService dnsValidationService,
-                           TechScraperService techScraperService,
-                           SocialDiscoveryService socialDiscoveryService,
-                           RdapService rdapService,
-                           Cache<String, List<String>> techCache) {
-        this.dnsValidationService = dnsValidationService;
-        this.techScraperService = techScraperService;
-        this.socialDiscoveryService = socialDiscoveryService;
-        this.rdapService = rdapService;
-        this.techCache = techCache;
-    }
 
     /**
      * Reseta todos os campos de enriquecimento para valores padrão.
@@ -67,6 +57,7 @@ public class DomainEnricherService {
         lead.setSocialLinks(new ArrayList<>());
         lead.setSocialProfileSummaries(new ArrayList<>());
         lead.setExposedEmails(new ArrayList<>());
+        lead.setExposedPhones(new ArrayList<>());
         lead.setNameMentions(new ArrayList<>());
         lead.setDorkFindings(0);
         lead.setOpenSerpRawData(null);

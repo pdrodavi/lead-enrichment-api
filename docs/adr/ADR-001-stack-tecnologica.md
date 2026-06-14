@@ -1,8 +1,8 @@
-# ADR-001: Stack Tecnológica — Java 21, Spring Boot 3.3 e Maven
+# ADR-001: Stack Tecnológica
 
 ## Status
 
-Atualizado (Jun/2026) — Migração de Java 17 → 21
+**Atualizado (Jun/2026)** — Migração de Java 17 para 21
 
 ## Contexto
 
@@ -58,5 +58,5 @@ Adotar a seguinte stack tecnológica:
 ## Referências
 
 - [Spring Boot 3.3 Release Notes](https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-3.3-Release-Notes)
-- [Java 17 Features](https://openjdk.org/projects/jdk/17/)
+- [Java 21 Features](https://openjdk.org/projects/jdk/21/)
 - [SpringDoc OpenAPI](https://springdoc.org/)
