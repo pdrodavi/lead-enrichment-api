@@ -54,21 +54,21 @@ spring:
 
 open-serp:
   api:
-    url: ${OPENSERP_API_URL:http://173.249.3.202:7000}
+    url: ${OPENSERP_API_URL:}
   # Lista de endpoints OpenSERP com proxies rotativos.
   # Preencha para evitar bloqueio CAPTCHA do Google.
   # Se vazia, usa o api.url acima (comportamento padrão).
   endpoints:
-    - url: ${OPENSERP_API_URL:http://173.249.3.202:7000}
-    - url: ${OPENSERP_API_URL_2:http://173.249.3.202:7002}
+    - url: ${OPENSERP_API_URL:}
+    - url: ${OPENSERP_API_URL_2:}
     #   proxy: http://user:pass@proxy1:8080
-    - url: ${OPENSERP_API_URL_3:http://173.249.3.202:7003}
+    - url: ${OPENSERP_API_URL_3:}
     #   proxy: http://user:pass@proxy2:8080
 
 api:
-  key: ${API_KEY:4L4VGPacx3WirVqydSRKdgRy66wePqGEUxL0lQR7}
+  key: ${API_KEY:}
   encryption:
-    secret: ${ENCRYPTION_SECRET:f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=}
+    secret: ${ENCRYPTION_SECRET:}
 
 management:
   endpoints:
@@ -86,7 +86,7 @@ management:
     enabled: true
   otlp:
     tracing:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://173.249.3.202:4318/v1/traces}
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:}
       timeout: 5s
 
 social-discovery:
