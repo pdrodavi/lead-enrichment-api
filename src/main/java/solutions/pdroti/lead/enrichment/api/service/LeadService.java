@@ -34,8 +34,23 @@ import org.springframework.transaction.support.TransactionTemplate;
  * </ul>
  * <p>
  * Otimização: OpenSERP e Domain enrichment executam em paralelo via
- * {@link CompletableFuture} com pool de threads dedicado,
+ * {@link CompletableFuture} com pool de Virtual Threads dedicado,
  * reduzindo o tempo total pela duração do mais lento.
+ * <p>
+ * <b>Merge seguro:</b> os campos compartilhados entre
+ * {@link OpenSerpEnricherService} e {@link DomainEnricherService}
+ * usam {@code LinkedHashSet} para evitar race conditions na escrita
+ * paralela.
+ * <p>
+ * <b>Cache:</b>
+ * <ul>
+ *   <li>DNS, tecnologias, links sociais, RDAP, perfis sociais — Caffeine (1h)</li>
+ *   <li>OpenSERP — Caffeine (30min) + Redis L2 (30min)</li>
+ *   <li>Enrich endpoint — {@code @Cacheable} (24h)</li>
+ * </ul>
+ * <p>
+ * <b>Domínios pessoais:</b> provedores como gmail.com, outlook.com
+ * têm o enriquecimento de domínio pulado (apenas OpenSERP roda).
  */
 @Service
 @Slf4j

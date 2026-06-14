@@ -7,13 +7,17 @@ stateDiagram-v2
     [*] --> PENDING : Novo lead recebido
     PENDING --> ENRICHING : Iniciar enriquecimento
 
-    ENRICHING --> DNS_CHECK : 1. Validar DNS
-    DNS_CHECK --> TECH_SCRAPE : 2. Detectar tecnologias
-    TECH_SCRAPE --> SOCIAL_DISCOVERY : 3. Descobrir redes sociais
-    SOCIAL_DISCOVERY --> SOCIAL_SCRAPE : 4. Scraping de perfis sociais
-    SOCIAL_SCRAPE --> RDAP_QUERY : 5. Consultar RDAP
-    RDAP_QUERY --> OPENSERP_SEARCH : 6. Buscar no OpenSERP
-    OPENSERP_SEARCH --> PERSISTING : 7. Persistir dados
+    ENRICHING --> PARALLEL : ⚡ Execução paralela
+    PARALLEL --> DNS_CHECK : Domain: 1. Validar DNS
+    PARALLEL --> OPENSERP_SEARCH : OpenSERP: 1. Buscar no Google (6 frentes)
+    DNS_CHECK --> TECH_SCRAPE : Domain: 2. Detectar tecnologias
+    TECH_SCRAPE --> SOCIAL_DISCOVERY : Domain: 3. Descobrir redes sociais
+    SOCIAL_DISCOVERY --> RDAP_QUERY : Domain: 4. Consultar RDAP
+    OPENSERP_SEARCH --> SERP_PROCESS : OpenSERP: 2. Processar resultados
+    SERP_PROCESS --> MERGE : 🔀 Merge seguro (LinkedHashSet)
+    TECH_SCRAPE --> MERGE
+    RDAP_QUERY --> MERGE
+    MERGE --> PERSISTING : 7. Persistir dados
 
     PERSISTING --> ENRICHED : Salvo com sucesso
     ENRICHED --> [*]
@@ -58,18 +62,19 @@ flowchart TD
         C3 --> C4["4. serializeResult — armazena como JSON"]
     end
 
-    FLUXO_COMPLETO --> FLUXO_OPENSERP_ENRICH
+    FLUXO_COMPLETO -.-> MERGE
+    FLUXO_OPENSERP_ENRICH --> MERGE
 
-    subgraph FLUXO_OPENSERP["Fluxo Reduzido (sem domínio)"]
+    subgraph FLUXO_OPENSERP["Fluxo Reduzido (sem domínio ou pessoal)"]
         direction TB
-        B1["1. OpenSERP Search (RestTemplate)"] --> B2["2. Extrair URLs dos resultados"]
-        B2 --> B3["3. Classificar links sociais"]
-        B3 --> B4["4. Extrair e-mails expostos"]
+        B1["1. OpenSERP Search (6 buscas)"] --> B2["2. Filtrar por nome exato"]
+        B2 --> B3["3. Extrair links, sociais, e-mails"]
+        B3 --> B4["4. Resultado: SerpSearchResult"]
     end
 
-    FLUXO_COMPLETO -.->|somente domínio| MERGE
-    FLUXO_OPENSERP_ENRICH --> MERGE
     FLUXO_OPENSERP --> MERGE
+
+    MERGE["🔀 Merge seguro (LinkedHashSet)<br/>socialLinks + nameMentions + exposedEmails<br/>foundDocuments + discoveredUrls"]
 
     MERGE["Mesclar todos os dados coletados"] --> ENCRYPT["Criptografar e-mail (AES-128-GCM)"]
     ENCRYPT --> PERSIST["Persistir Lead no PostgreSQL<br/>FetchType: LAZY"]

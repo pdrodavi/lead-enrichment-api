@@ -20,6 +20,20 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
+/**
+ * Serviço de descoberta e scraping de redes sociais.
+ * <p>
+ * A partir do HTML de um domínio, extrai links para redes sociais
+ * (31 plataformas configuradas via {@link SocialDiscoveryProperties})
+ * e faz scraping individual de cada perfil para obter título e descrição.
+ * <p>
+ * Otimizações:
+ * <ul>
+ *   <li>Cache Caffeine para links sociais por domínio (1h)</li>
+ *   <li>Cache Caffeine para dados de perfil social por URL (1h)</li>
+ *   <li>Scraping de perfis em paralelo via {@code CompletableFuture}</li>
+ * </ul>
+ */
 @Slf4j
 @Service
 public class SocialDiscoveryService {

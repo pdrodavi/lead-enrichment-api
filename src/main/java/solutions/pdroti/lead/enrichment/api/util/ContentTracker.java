@@ -59,17 +59,13 @@ public final class ContentTracker {
     public String computeHash(String content) {
         if (content == null || content.isBlank()) return "";
         MessageDigest md = DIGEST.get();
-        try {
-            md.reset();
-            byte[] digest = md.digest(content.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(64);
-            for (byte b : digest) {
-                hex.append(String.format("%02x", b & 0xff));
-            }
-            return hex.toString();
-        } finally {
-            DIGEST.remove();
+        md.reset();
+        byte[] digest = md.digest(content.getBytes(StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder(64);
+        for (byte b : digest) {
+            hex.append(String.format("%02x", b & 0xff));
         }
+        return hex.toString();
     }
 
     /**

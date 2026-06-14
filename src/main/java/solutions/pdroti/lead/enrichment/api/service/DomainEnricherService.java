@@ -20,7 +20,14 @@ import java.util.function.Supplier;
  * <p>
  * Extraído do {@code LeadService} para manter a responsabilidade única (SRP).
  * <p>
- * Otimizações: resultados de tecnologias são cacheados via Caffeine (1h).
+ * Otimizações:
+ * <ul>
+ *   <li>Resultados de tecnologias cacheados via Caffeine (1h)</li>
+ *   <li>Cache RDAP via Caffeine (1h)</li>
+ *   <li>Links sociais cacheados via Caffeine (1h)</li>
+ *   <li>Dados de perfil social cacheados via Caffeine (1h)</li>
+ *   <li>Merge seguro com {@link OpenSerpEnricherService} via {@code LinkedHashSet}</li>
+ * </ul>
  */
 @Slf4j
 @Service

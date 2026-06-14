@@ -16,6 +16,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Serviço de detecção de tecnologias e scraping de páginas web.
+ * <p>
+ * Utiliza Jsoup para parsear HTML e detectar tecnologias a partir de
+ * assinaturas configuradas no {@link TechScraperProperties}.
+ * <p>
+ * Assinaturas:
+ * <ul>
+ *   <li>{@code signatures} — substrings no HTML (WordPress, React, Bootstrap, etc.)</li>
+ *   <li>{@code script-detectors} — atributos src de scripts (Facebook Pixel, Hotjar, etc.)</li>
+ *   <li>{@code meta-generators} — meta tags generator (WordPress, Joomla, Drupal, etc.)</li>
+ * </ul>
+ * <p>
+ * Otimizações:
+ * <ul>
+ *   <li>Scraping de tecnologias + verificação de nome em UMA requisição HTTP</li>
+ *   <li>Cache Caffeine (1h) via {@code DomainEnricherService}</li>
+ * </ul>
+ */
 @Slf4j
 @Service
 public class TechScraperService {

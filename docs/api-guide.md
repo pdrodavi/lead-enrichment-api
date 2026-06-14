@@ -248,7 +248,7 @@ Mesmo formato do enrich, retornando apenas o lead atualizado.
 
 ---
 
-### 6. Excluir Lead (Soft Delete — LGPD)
+### 6. Excluir Lead (Hard Delete — LGPD)
 
 ```
 DELETE /api/v1/leads/{id}
@@ -407,6 +407,6 @@ LeadResponse
 | `nameMentions` | `@ElementCollection` | Menções ao nome |
 | `createdAt` | LocalDateTime | Data de criação |
 | `updatedAt` | LocalDateTime | Data de atualização |
-| `deletedAt` | LocalDateTime | Data de exclusão (soft delete) |
+| `deletedAt` | LocalDateTime | Data de exclusão (hard delete) |
 
 > Todos os campos de lista usam `FetchType.LAZY` para performance.

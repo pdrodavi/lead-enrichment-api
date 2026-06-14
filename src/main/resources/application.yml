@@ -21,6 +21,27 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${HIKARI_MAX_POOL:10}
+      minimum-idle: ${HIKARI_MIN_IDLE:2}
+      idle-timeout: 300000
+      connection-timeout: 10000
+      max-lifetime: 600000
+  data:
+    redis:
+      host: ${REDIS_HOST:}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 5000
+      lettuce:
+        pool:
+          max-active: ${REDIS_POOL_MAX:8}
+          max-idle: ${REDIS_POOL_IDLE:4}
+          min-idle: ${REDIS_POOL_MIN:1}
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
   jpa:
     show-sql: false
     format-sql: false
@@ -177,24 +198,6 @@ techscraper:
     Wix: ["wix.com", "wixstatic.com"]
     OpenCart: ["opencart", "route=common"]
     PrestaShop: ["prestashop"]
-    Stripe: ["stripe.com", "checkout.stripe"]
-    PayPal: ["paypal.com", "paypalobjects"]
-    "Mercado Pago": ["mercadopago"]
-    "Google Fonts": ["fonts.googleapis"]
-    "Adobe Fonts": ["typekit.net", "use.typekit"]
-    Sentry: ["sentry"]
-    "New Relic": ["newrelic"]
-    CookieYes: ["cookieyes"]
-    Cookiebot: ["cookiebot"]
-    OneTrust: ["onetrust"]
-    YouTube: ["youtube.com/embed", "youtube-nocookie"]
-    Vimeo: ["vimeo.com"]
-    "Google Maps": ["maps.googleapis", "maps.google"]
-    reCAPTCHA: ["recaptcha", "g-recaptcha"]
-    Disqus: ["disqus"]
-    Zendesk: ["zendesk"]
-    LiveChat: ["livechat"]
-
   script-detectors:
     "Facebook Pixel": ["facebook", "fbq"]
     Hotjar: ["hotjar"]
@@ -271,5 +274,11 @@ logging:
     com.zaxxer.hikari: ERROR
     # Otel tracing (muito ruído)
     io.opentelemetry: WARN
+    # Redis/Lettuce (pool, conexões, cluster — só erro)
+    org.springframework.data.redis: WARN
+    io.lettuce: WARN
+    io.lettuce.core: WARN
+    # RedisCacheService (debug para monitorar L2 hits/misses)
+    #"[solutions.pdroti.lead.enrichment.api.service.RedisCacheService]": DEBUG
   pattern:
     console: "%d{HH:mm:ss} %-5level - %msg%n"

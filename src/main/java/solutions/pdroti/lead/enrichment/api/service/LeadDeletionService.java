@@ -2,20 +2,15 @@ package solutions.pdroti.lead.enrichment.api.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
-import solutions.pdroti.lead.enrichment.api.model.Lead;
 import solutions.pdroti.lead.enrichment.api.repository.LeadRepository;
 
-import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
  * Serviço responsável pela exclusão de leads.
  * <p>
  * O método principal é {@link #hardDelete(String)}, que remove fisicamente
- * o registro do banco (1 query via {@code deleteById}). O método
- * {@link #softDelete(String)} é mantido para retrocompatibilidade.
+ * o registro do banco (1 query via {@code deleteById}).
  * <p>
  * Extraído do {@code LeadService} para manter a responsabilidade única (SRP).
  */
@@ -24,13 +19,11 @@ import java.util.Optional;
 public class LeadDeletionService {
 
     private final LeadRepository leadRepository;
-    private final TransactionTemplate transactionTemplate;
 
     static final String DELETED_STATUS = "DELETED";
 
-    public LeadDeletionService(LeadRepository leadRepository, TransactionTemplate transactionTemplate) {
+    public LeadDeletionService(LeadRepository leadRepository) {
         this.leadRepository = leadRepository;
-        this.transactionTemplate = transactionTemplate;
     }
 
     /**

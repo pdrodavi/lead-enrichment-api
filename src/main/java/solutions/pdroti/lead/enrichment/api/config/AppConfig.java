@@ -24,6 +24,9 @@ import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.caffeine.CaffeineCacheManager;
+
 /**
  * Configuração geral da aplicação.
  * <p>
@@ -206,5 +209,19 @@ public class AppConfig {
                 .maximumSize(5_000)
                 .recordStats()
                 .build();
+    }
+
+    /**
+     * CacheManager para {@code @Cacheable} do Spring.
+     * Usa Caffeine como backend — TTL de 24h para resultados de enrich.
+     * Cacheia a resposta completa do POST /enrich por email.
+     */
+    @Bean
+    public CacheManager cacheManager() {
+        var cacheManager = new CaffeineCacheManager();
+        cacheManager.setCaffeine(Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofHours(24))
+                .maximumSize(10_000));
+        return cacheManager;
     }
 }

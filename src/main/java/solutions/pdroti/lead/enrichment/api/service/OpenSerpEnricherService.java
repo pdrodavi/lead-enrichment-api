@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.stream.Stream;
@@ -22,9 +23,16 @@ import java.util.stream.Stream;
 /**
  * Responsável pelo enriquecimento de leads via OpenSERP (Google Search).
  * <p>
- * Busca o nome da pessoa no Google em múltiplas frentes:
- * busca geral, redes sociais, perfil profissional, informações de
- * contato, notícias e documentos. Todas as buscas rodam em paralelo.
+ * Busca o nome da pessoa no Google em 6 frentes paralelas:
+ * busca geral, documentos, redes sociais, perfil profissional,
+ * informações de contato e notícias.
+ * <p>
+ * <b>Merge seguro:</b> os campos compartilhados com
+ * {@link DomainEnricherService} ({@code socialLinks}, {@code nameMentions},
+ * {@code exposedEmails}, {@code foundDocuments}, {@code discoveredUrls})
+ * são mesclados via {@code LinkedHashSet} para evitar race conditions
+ * na execução paralela.
+ * <p>
  * Extraído do {@code LeadService} para manter a responsabilidade única (SRP).
  */
 @Slf4j
@@ -121,12 +129,32 @@ public class OpenSerpEnricherService {
         processResults(contact, name, ctx, socialDomains, "Contato");
         processResults(news, name, ctx, socialDomains, "Notícias");
 
-        lead.setSocialLinks(new ArrayList<>(ctx.socialLinksFound()));
-        lead.setDiscoveredUrls(new ArrayList<>(ctx.allLinks()));
-        lead.setExposedEmails(ctx.emails());
-        lead.setDorkFindings(ctx.emails().size());
-        lead.setNameMentions(ctx.nameMentions());
-        lead.setFoundDocuments(ctx.foundDocs());
+        // Merge com dados que o DomainEnricherService pode ter definido em paralelo
+        Set<String> mergedSocial = new LinkedHashSet<>(
+                lead.getSocialLinks() != null ? lead.getSocialLinks() : List.of());
+        mergedSocial.addAll(ctx.socialLinksFound());
+        lead.setSocialLinks(new ArrayList<>(mergedSocial));
+
+        Set<String> mergedUrls = new LinkedHashSet<>(
+                lead.getDiscoveredUrls() != null ? lead.getDiscoveredUrls() : List.of());
+        mergedUrls.addAll(ctx.allLinks());
+        lead.setDiscoveredUrls(new ArrayList<>(mergedUrls));
+
+        Set<String> mergedEmails = new LinkedHashSet<>(
+                lead.getExposedEmails() != null ? lead.getExposedEmails() : List.of());
+        mergedEmails.addAll(ctx.emails());
+        lead.setExposedEmails(new ArrayList<>(mergedEmails));
+        lead.setDorkFindings(lead.getExposedEmails().size());
+
+        Set<String> mergedMentions = new LinkedHashSet<>(
+                lead.getNameMentions() != null ? lead.getNameMentions() : List.of());
+        mergedMentions.addAll(ctx.nameMentions());
+        lead.setNameMentions(new ArrayList<>(mergedMentions));
+
+        Set<String> mergedDocs = new LinkedHashSet<>(
+                lead.getFoundDocuments() != null ? lead.getFoundDocuments() : List.of());
+        mergedDocs.addAll(ctx.foundDocs());
+        lead.setFoundDocuments(new ArrayList<>(mergedDocs));
         lead.setOpenSerpRawData(serializeResult(
                 new SerpSearchResult(name, ctx.matchedItems().size(), ctx.matchedItems())));
 

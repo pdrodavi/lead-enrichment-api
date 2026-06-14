@@ -8,9 +8,12 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -25,7 +28,11 @@ import java.util.List;
 
 /** Entidade JPA que representa um lead enriquecido com dados de domínio. */
 @Entity
-@Table(name = "leads")
+@Table(name = "leads", indexes = {
+        @Index(name = "idx_lead_domain", columnList = "domain"),
+        @Index(name = "idx_lead_domain_status", columnList = "domain, status"),
+        @Index(name = "idx_lead_status", columnList = "status")
+})
 @Getter
 @Setter
 @Builder
@@ -63,42 +70,52 @@ public class Lead implements Serializable {
     // === DNS — todos os registros consultados ===
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     @Column(length = 2048)
     private List<String> dnsMxRecords;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     private List<String> dnsARecords;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     private List<String> dnsAaaaRecords;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     private List<String> dnsCnameRecords;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     @Column(length = 4096)
     private List<String> dnsTxtRecords;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     private List<String> technologies;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     @Column(length = 2048)
     private List<String> socialLinks;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     @Column(length = 2048)
     private List<String> socialProfileSummaries;
 
     // === Google Dorks — dados de info exposta ===
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     @Column(length = 2048)
     private List<String> exposedEmails;
 
     private int dorkFindings;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     @Column(length = 2048)
     private List<String> nameMentions;
 
@@ -120,10 +137,12 @@ public class Lead implements Serializable {
     private LocalDateTime rdapExpirationDate;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     @Column(length = 2048)
     private List<String> rdapNameservers;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     @Column(length = 512)
     private List<String> rdapStatus;
 
@@ -139,10 +158,12 @@ public class Lead implements Serializable {
     private String openSerpRawData;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     @Column(length = 2048)
     private List<String> foundDocuments;
 
     @ElementCollection(fetch = FetchType.LAZY)
+    @Fetch(FetchMode.SUBSELECT)
     @Column(length = 2048)
     private List<String> discoveredUrls;
 
@@ -157,7 +178,8 @@ public class Lead implements Serializable {
 
     /** Versionamento para lock otimista (evita race conditions em reenriquecimento). */
     @Version
-    private Long version;
+    @Builder.Default
+    private Long version = 0L;
 
     /** Retorna true se o lead já foi persistido (id != null). */
     public boolean isPresent() {

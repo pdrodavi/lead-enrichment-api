@@ -4,14 +4,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.cache.annotation.Cacheable;
 import solutions.pdroti.lead.enrichment.api.dto.LeadRequest;
 import solutions.pdroti.lead.enrichment.api.dto.LeadResponse;
+import solutions.pdroti.lead.enrichment.api.dto.LeadResponseSummary;
 import solutions.pdroti.lead.enrichment.api.service.LeadDeletionService;
 import solutions.pdroti.lead.enrichment.api.service.LeadService;
 import solutions.pdroti.lead.enrichment.api.util.EmailUtils;
@@ -25,12 +28,20 @@ import java.util.Map;
  * Endpoints para enriquecimento, listagem, consulta, atualização e
  * remoção permanente de leads.
  * <p>
+ * <b>Cache:</b>
+ * <ul>
+ *   <li>{@code POST /enrich} — {@code @Cacheable("enrich-result")} por email (TTL 24h)</li>
+ *   <li>{@code PUT /{id}} — evict manual do cache do email antigo + novo</li>
+ *   <li>{@code GET /} — retorna {@link LeadResponseSummary} (sem parse de JSONs brutos)</li>
+ * </ul>
+ * <p>
  * Todos os endpoints exigem a header {@code X-API-KEY} para autenticação.
  *
  * @see LeadService
  * @see LeadDeletionService
  * @see LeadRequest
  * @see LeadResponse
+ * @see LeadResponseSummary
  */
 @Slf4j
 @RestController
@@ -41,6 +52,7 @@ public class LeadController {
     private final LeadService leadService;
     private final LeadDeletionService leadDeletionService;
     private final ObjectMapper objectMapper;
+    private final CacheManager cacheManager;
 
     /**
      * Enriquece um lead com dados do domínio (DNS, RDAP, tecnologias,
@@ -52,6 +64,7 @@ public class LeadController {
      * @return 200 com lista de leads do domínio, ou 400 se validação falhar
      */
     @PostMapping("/enrich")
+    @Cacheable(value = "enrich-result", key = "#request.email")
     public ResponseEntity<List<LeadResponse>> enrichLead(@Valid @RequestBody LeadRequest request) {
         log.info("POST /enrich email={} name={} domain={}",
                 EmailUtils.mask(request.getEmail()), request.getName(), request.getDomain());
@@ -75,15 +88,17 @@ public class LeadController {
 
     /**
      * Lista todos os leads com status ACTIVE (paginado).
+     * Retorna resumo leve ({@link LeadResponseSummary}) sem JSONs brutos
+     * para evitar parseamentos caros de {@code ObjectMapper} na listagem.
      *
      * @param pageable parâmetros de paginação (page, size, sort)
-     * @return 200 com página de leads ativos
+     * @return 200 com página de resumos de leads ativos
      */
     @GetMapping
-    public ResponseEntity<Page<LeadResponse>> listAll(
+    public ResponseEntity<Page<LeadResponseSummary>> listAll(
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
         var page = leadService.listAll(pageable)
-                .map(lead -> LeadResponse.fromEntity(lead, objectMapper));
+                .map(LeadResponseSummary::fromEntity);
         return ResponseEntity.ok(page);
     }
 
@@ -120,7 +135,25 @@ public class LeadController {
             @PathVariable String id,
             @Valid @RequestBody LeadRequest request) {
         log.info("PUT /{} name={} email={}", id, request.getName(), EmailUtils.mask(request.getEmail()));
+
+        // Evita cache stale: remove entrada do email ANTIGO antes de atualizar
+        var oldLead = leadService.findById(id);
+        oldLead.ifPresent(lead -> {
+            var cache = cacheManager.getCache("enrich-result");
+            if (cache != null) {
+                cache.evict(lead.getEmail());
+                log.debug("Cache evict para email antigo: {}", EmailUtils.mask(lead.getEmail()));
+            }
+        });
+
         var updated = leadService.update(id, request.getEmail(), request.getDomain(), request.getName());
+
+        // Remove entrada do novo email (o @CacheEvict foi removido intencionalmente)
+        var cache = cacheManager.getCache("enrich-result");
+        if (cache != null) {
+            cache.evict(request.getEmail());
+        }
+
         return ResponseEntity.ok(LeadResponse.fromEntity(updated, objectMapper));
     }
 

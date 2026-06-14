@@ -99,7 +99,7 @@ X-API-KEY: <sua-chave>
 
 | Componente | Arquivo | Função |
 |---|---|---|
-| `LeadDeletionService` | `service/LeadDeletionService.java` | Orquestra hard/soft delete |
+| `LeadDeletionService` | `service/LeadDeletionService.java` | Hard delete (1 query) |
 | `LeadController.deleteLead` | `controller/LeadController.java` | Endpoint REST |
 
 O `hardDelete` executa `deleteById` em **1 única query**, capturando `EmptyResultDataAccessException` se o ID não existir.
@@ -277,7 +277,7 @@ Durante o processo de revisão de código, as seguintes correções de seguranç
 | Requisito LGPD | Implementação | Status |
 |---|---|---|
 | **Art. 6 — Princípios** (finalidade, adequação, necessidade) | Coleta apenas dados públicos para enriquecimento | ✅ |
-| **Art. 18, VI — Direito ao esquecimento** | Soft delete via `DELETE /api/v1/leads/{id}` | ✅ |
+| **Art. 18, VI — Direito ao esquecimento** | Hard delete via `DELETE /api/v1/leads/{id}` | ✅ |
 | **Art. 46 — Medidas de segurança** | AES-128-GCM + SHA-256 + API Key | ✅ |
 | **Art. 47 — Boas práticas** | Mascaramento em logs e respostas | ✅ |
 | **Art. 49 — Término do tratamento** | Retenção de 365 dias com expurgo futuro | ✅ |

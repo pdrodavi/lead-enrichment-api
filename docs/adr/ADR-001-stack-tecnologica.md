@@ -31,10 +31,11 @@ Adotar a seguinte stack tecnológica:
 | **Spring Validation** | - | Validação | @Valid + @NotBlank/@Email nos DTOs |
 | **OpenTelemetry** | 1.38+ | Tracing | Exportação OTLP para Jaeger (HTTP/protobuf na porta 4318) |
 | **Micrometer Tracing** | 1.3+ | Bridge OTel | Integração automática com Spring Boot |
-| **Caffeine** | - | Cache | Cache em memória (DNS, tecnologias, links sociais) com TTL 1h |
+| **Caffeine** | - | Cache L1 | Cache em memória (DNS, tecnologias, links sociais, OpenSERP, RDAP) com TTL 1h |
+| **Redis** | - | Cache L2 | Cache distribuído (Lettuce + StringRedisTemplate) com fallback se indisponível |
 | **Apache HttpClient 5** | - | HTTP Pooling | Connection pooling para RestTemplate (200 conexões máx) |
 | **Jackson** | - | Serialização | Padrão Spring Boot, ObjectMapper injetado via Spring |
-| **Spring RestTemplate** | - | Cliente HTTP | Bean gerenciado pelo Spring em AppConfig (timeouts 5s/20s) |
+| **Spring RestTemplate** | - | Cliente HTTP | Bean gerenciado pelo Spring em AppConfig (timeouts 5s/20s e 10s/30s OpenSERP) |
 | **@ConfigurationProperties** | - | Config externalizada | Prefixos YAML para TechScraperProperties e SocialDiscoveryProperties |
 
 ## Consequências
@@ -51,6 +52,7 @@ Adotar a seguinte stack tecnológica:
   - Java 21 como dependência de runtime obrigatória
   - Spring Boot 3.3.x exige Jakarta EE 10 (jakarta.* em vez de javax.*)
   - Lombok requer configuração na IDE para suporte completo
+  - Redis requer configuração adicional de host/password
   - `.env` deve ser configurado antes da primeira execução
 
 ## Referências

@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import java.net.http.HttpClient;
 import solutions.pdroti.lead.enrichment.api.dto.RdapData;
 
 import java.net.URI;
