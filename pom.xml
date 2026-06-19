@@ -12,6 +12,7 @@
     <version>1.0.0</version>
     <properties>
         <java.version>21</java.version>
+        <sonar.organization>pdrodavi</sonar.organization>
     </properties>
     <dependencies>
         <dependency>
