@@ -9,7 +9,7 @@
     </parent>
     <groupId>solutions.pdroti</groupId>
     <artifactId>lead-enrichment-api</artifactId>
-    <version>1.0.0</version>
+    <version>1.2.1</version>
     <properties>
         <java.version>21</java.version>
         <sonar.organization>pdrodavi</sonar.organization>
