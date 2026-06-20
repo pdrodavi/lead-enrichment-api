@@ -471,4 +471,15 @@ class TechScraperServiceTest {
 
         assertFalse(result.nameMentions().isEmpty());
     }
+
+    @Test
+    void scrapeTechnologiesAndCheckName_comFalhaHttp_deveRetornarErro() {
+        when(restTemplate.getForObject("https://exemplo.com", String.class))
+                .thenThrow(new RuntimeException("Timeout"));
+
+        var result = techScraperService.scrapeTechnologiesAndCheckName("exemplo.com", "Maria");
+
+        assertTrue(result.technologies().stream().anyMatch(t -> t.contains("Timeout")));
+        assertTrue(result.nameMentions().isEmpty());
+    }
 }

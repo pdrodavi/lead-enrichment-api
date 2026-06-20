@@ -620,4 +620,35 @@ class RdapServiceTest {
         assertEquals("2020-01-01T00:00:00Z", result.registrationDate());
         assertEquals("2025-01-01T00:00:00Z", result.expirationDate());
     }
+
+    // ========== InterruptedException em fetchJson ==========
+
+    @Test
+    void lookupComInterruptedException_deveReinterromperERetornarEmpty() throws Exception {
+        when(rdapCache.getIfPresent(DOMAIN)).thenReturn(null);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenThrow(new InterruptedException("Thread foi interrompida"));
+
+        RdapData result = rdapService.lookup(DOMAIN);
+
+        assertNull(result.rawJson());
+    }
+
+    @Test
+    void lookupComBrInterruptedException_deveReinterromperERetornarEmpty() throws Exception {
+        String identityJson = """
+                {"entities": [{"roles": ["registrar"], "vcardArray": ["vcard", [["fn", {}, "text", "Reg"]]]}]}
+                """;
+        when(rdapCache.getIfPresent(DOMAIN_COM_BR)).thenReturn(null);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(httpResponse)
+                .thenThrow(new InterruptedException("Registro.br interrompido"));
+        when(httpResponse.statusCode()).thenReturn(200);
+        when(httpResponse.body()).thenReturn(identityJson);
+
+        RdapData result = rdapService.lookup(DOMAIN_COM_BR);
+
+        // Identity Digital funcionou, mas Registro.br foi interrompido
+        assertEquals("Reg", result.registrar());
+    }
 }
