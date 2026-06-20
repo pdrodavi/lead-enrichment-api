@@ -314,6 +314,14 @@ class TechScraperServiceTest {
     }
 
     @Test
+    void findNameInPage_comFalhaHttp_deveRetornarVazio() {
+        when(restTemplate.getForObject("https://exemplo.com", String.class))
+                .thenThrow(new RuntimeException("Timeout"));
+
+        assertTrue(techScraperService.findNameInPage("exemplo.com", "Teste").isEmpty());
+    }
+
+    @Test
     void findNameInPage_comDomainNull_deveRetornarVazio() {
         assertTrue(techScraperService.findNameInPage(null, "Teste").isEmpty());
     }
@@ -321,5 +329,100 @@ class TechScraperServiceTest {
     @Test
     void findNameInPage_comNameNull_deveRetornarVazio() {
         assertTrue(techScraperService.findNameInPage("exemplo.com", null).isEmpty());
+    }
+
+    // ========== detectByMetaProperties - Twitter Cards via property ==========
+
+    @Test
+    void scrapeTechnologies_comTwitterCardViaProperty_deveDetectar() {
+        String html = "<html><head><meta property=\"twitter:card\" content=\"summary_large_image\"></head><body></body></html>";
+        when(restTemplate.getForObject("https://exemplo.com", String.class)).thenReturn(html);
+        when(properties.getSignatures()).thenReturn(Map.of());
+        when(properties.getScriptDetectors()).thenReturn(Map.of());
+        when(properties.getMetaGenerators()).thenReturn(Map.of());
+
+        var result = techScraperService.scrapeTechnologies("exemplo.com");
+
+        assertTrue(result.contains("Twitter Cards"));
+    }
+
+    // ========== scrapePage - Twitter Cards e charset alternativo ==========
+
+    @Test
+    void scrapePage_comTwitterCardECharsetHttpEquiv_deveExtrair() {
+        String html = """
+                <html lang="en">
+                <head>
+                    <title>Test</title>
+                    <meta name="twitter:card" content="summary">
+                    <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+                </head>
+                <body></body>
+                </html>
+                """;
+        when(restTemplate.getForObject("https://exemplo.com", String.class)).thenReturn(html);
+        when(properties.getSignatures()).thenReturn(Map.of());
+        when(properties.getScriptDetectors()).thenReturn(Map.of());
+        when(properties.getMetaGenerators()).thenReturn(Map.of());
+
+        var result = techScraperService.scrapePage("exemplo.com");
+
+        assertTrue(result.twitterCards().containsKey("twitter:card"));
+        assertEquals("iso-8859-1", result.charset());
+        assertEquals("en", result.language());
+    }
+
+    // ========== scrapeTechnologiesAndCheckName - erro com technologies já preenchidas ==========
+
+    @Test
+    void scrapeTechnologiesAndCheckName_comErroComTechsExistentes_deveManterTechs() {
+        String html = "<html><body>wp-content</body></html>";
+        when(restTemplate.getForObject("https://exemplo.com", String.class)).thenReturn(html);
+        when(properties.getSignatures()).thenReturn(Map.of("WordPress", List.of("wp-content")));
+        when(properties.getScriptDetectors()).thenReturn(Map.of());
+        when(properties.getMetaGenerators()).thenReturn(Map.of());
+
+        // Primeira chamada: com nome (tecnologias detectadas + nome não encontrado)
+        var result = techScraperService.scrapeTechnologiesAndCheckName("exemplo.com", "Maria");
+
+        assertTrue(result.technologies().contains("WordPress"));
+        assertTrue(result.nameMentions().isEmpty());
+    }
+
+    // ========== nameMatchesExactly - nome não encontrado ==========
+
+    @Test
+    void scrapeTechnologiesAndCheckName_comNomeNaoExistente_deveIgnorar() {
+        String html = "<html><head><title>Empresa X - Contato</title></head><body>Bem-vindo à Empresa X</body></html>";
+        when(restTemplate.getForObject("https://exemplo.com", String.class)).thenReturn(html);
+        when(properties.getSignatures()).thenReturn(Map.of());
+        when(properties.getScriptDetectors()).thenReturn(Map.of());
+        when(properties.getMetaGenerators()).thenReturn(Map.of());
+
+        var result = techScraperService.scrapeTechnologiesAndCheckName("exemplo.com", "Carlos Alberto");
+
+        assertTrue(result.nameMentions().isEmpty());
+    }
+
+    @Test
+    void scrapePage_comOpenGraphETwitterCards_viaScrapePage() {
+        String html = """
+                <html>
+                <head>
+                    <meta property="og:title" content="OG Title">
+                    <meta name="twitter:site" content="@teste">
+                </head>
+                <body></body>
+                </html>
+                """;
+        when(restTemplate.getForObject("https://exemplo.com", String.class)).thenReturn(html);
+        when(properties.getSignatures()).thenReturn(Map.of());
+        when(properties.getScriptDetectors()).thenReturn(Map.of());
+        when(properties.getMetaGenerators()).thenReturn(Map.of());
+
+        var result = techScraperService.scrapePage("exemplo.com");
+
+        assertTrue(result.openGraph().containsKey("og:title"));
+        assertTrue(result.twitterCards().containsKey("twitter:site"));
     }
 }
