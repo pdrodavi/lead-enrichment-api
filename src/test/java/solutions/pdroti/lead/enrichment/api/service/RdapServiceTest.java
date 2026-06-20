@@ -624,7 +624,7 @@ class RdapServiceTest {
     // ========== InterruptedException em fetchJson ==========
 
     @Test
-    void lookupComInterruptedException_deveReinterromperERetornarEmpty() throws Exception {
+    void lookupWithInterruptedExceptionReturnsEmpty() throws Exception {
         when(rdapCache.getIfPresent(DOMAIN)).thenReturn(null);
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
                 .thenThrow(new InterruptedException("Thread foi interrompida"));
@@ -635,7 +635,7 @@ class RdapServiceTest {
     }
 
     @Test
-    void lookupComBrInterruptedException_deveReinterromperERetornarEmpty() throws Exception {
+    void lookupWithBrInterruptedExceptionReturnsIdentityFallback() throws Exception {
         String identityJson = """
                 {"entities": [{"roles": ["registrar"], "vcardArray": ["vcard", [["fn", {}, "text", "Reg"]]]}]}
                 """;

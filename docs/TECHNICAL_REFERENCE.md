@@ -406,7 +406,7 @@ Retorno encapsulado em Spring `Page<LeadResponse>` com `content`, `page.size`, `
 | `DB_USERNAME` | ✅ | Usuário do banco | `postgres` |
 | `DB_PASSWORD` | ✅ | Senha do banco | — |
 | `API_KEY` | ✅ | Chave de autenticação | — |
-| `ENCRYPTION_SECRET` | ✅ | Chave AES-128-GCM (16+ bytes) | `f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=` |
+| `ENCRYPTION_SECRET` | ✅ | Chave AES-128-GCM (16+ bytes) | *(obrigatório — sem default)* |
 | `OPENSERP_API_URL` | ✅ | URL do OpenSERP | `http://localhost:7000` |
 | `PORT` | ❌ | Porta HTTP (default: 8081) | `8081` |
 | `ENV` | ❌ | Sufixo de ambiente Docker | `dev` |

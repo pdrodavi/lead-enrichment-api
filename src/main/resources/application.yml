@@ -1,38 +1,38 @@
 server:
   port: ${PORT:8081}
   tomcat:
-    connection-timeout: 60000
-    keep-alive-timeout: 60000
+    connection-timeout: ${TOMCAT_CONN_TIMEOUT:60000}
+    keep-alive-timeout: ${TOMCAT_KEEPALIVE_TIMEOUT:60000}
   compression:
-    enabled: true
+    enabled: ${COMPRESSION_ENABLED:true}
     mime-types: application/json,application/xml,text/html,text/plain
-    min-response-size: 1024
+    min-response-size: ${COMPRESSION_MIN_SIZE:1024}
 
 spring:
   threads:
     virtual:
-      enabled: true
+      enabled: ${VIRTUAL_THREADS:true}
   application:
     name: lead-enrichment-api
   mvc:
     async:
-      request-timeout: 60000
+      request-timeout: ${ASYNC_TIMEOUT:60000}
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/lead_enrichment}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
     hikari:
       maximum-pool-size: ${HIKARI_MAX_POOL:10}
       minimum-idle: ${HIKARI_MIN_IDLE:2}
-      idle-timeout: 300000
-      connection-timeout: 10000
-      max-lifetime: 600000
+      idle-timeout: ${HIKARI_IDLE_TIMEOUT:300000}
+      connection-timeout: ${HIKARI_CONN_TIMEOUT:10000}
+      max-lifetime: ${HIKARI_MAX_LIFETIME:600000}
   data:
     redis:
       host: ${REDIS_HOST:}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
-      timeout: 5000
+      timeout: ${REDIS_TIMEOUT:5000}
       lettuce:
         pool:
           max-active: ${REDIS_POOL_MAX:8}
@@ -47,28 +47,33 @@ spring:
     show-sql: false
     format-sql: false
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${DDL_AUTO:update}
   jackson:
     serialization:
       write-dates-as-timestamps: false
 
 open-serp:
   api:
-    url: ${OPENSERP_API_URL:http://173.249.3.202:7000}
+    url: ${OPENSERP_API_URL:http://localhost:7000}
   # Lista de endpoints OpenSERP com proxies rotativos.
   # Preencha para evitar bloqueio CAPTCHA do Google.
   # Se vazia, usa o api.url acima (comportamento padrão).
   endpoints:
-    - url: ${OPENSERP_API_URL:http://173.249.3.202:7000}
-    - url: ${OPENSERP_API_URL_2:http://173.249.3.202:7002}
+    - url: ${OPENSERP_API_URL:http://localhost:7000}
+    - url: ${OPENSERP_API_URL_2:}
     #   proxy: http://user:pass@proxy1:8080
-    - url: ${OPENSERP_API_URL_3:http://173.249.3.202:7003}
+    - url: ${OPENSERP_API_URL_3:}
     #   proxy: http://user:pass@proxy2:8080
 
 api:
-  key: ${API_KEY:4L4VGPacx3WirVqydSRKdgRy66wePqGEUxL0lQR7}
+  key: ${API_KEY:dev-api-key}
   encryption:
-    secret: ${ENCRYPTION_SECRET:f44sGktPn25aHIuTfi9KbIwNnh8qO0xdbn+KmwwePz8=}
+    secret: ${ENCRYPTION_SECRET:change-me-16-bytes!}
+
+# Timing filter desabilitado por padrão. Ative com app.timing-filter.enabled=true
+app:
+  timing-filter:
+    enabled: ${TIMING_FILTER_ENABLED:false}
 
 management:
   endpoints:
@@ -82,11 +87,11 @@ management:
         enabled: true
   tracing:
     sampling:
-      probability: 1.0
-    enabled: true
+      probability: ${TRACING_SAMPLING:1.0}
+    enabled: ${TRACING_ENABLED:true}
   otlp:
     tracing:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://173.249.3.202:4318/v1/traces}
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
       timeout: 5s
 
 social-discovery:
@@ -221,6 +226,11 @@ techscraper:
     Optimizely: ["optimizely"]
     "Twitter Pixel": ["twttr", "twitter-widgets"]
 
+  property-detectors:
+    "og:": "Open Graph"
+    "twitter:": "Twitter Cards"
+    "fb:app_id": "Facebook App"
+
   meta-generators:
     wordpress: "WordPress"
     laravel: "Laravel"
@@ -255,31 +265,22 @@ techscraper:
 
 logging:
   level:
-    root: WARN
-    solutions.pdroti: INFO
-    # Cache Caffeine hits/misses (muito ruído — desligado)
-    com.github.benmanes.caffeine.cache: WARN
-    # DNS lookups e registros TXT (só erro)
-    org.xbill.DNS: ERROR
-    # JSoup HTML parsing (só erro)
-    org.jsoup: ERROR
-    # Apache HttpClient connection pool (só erro)
-    org.apache.hc.client5.http: ERROR
-    org.springframework: WARN
-    # Spring Web (só erro, desliga tracing verbose)
-    org.springframework.web: ERROR
-    org.springframework.boot.actuate: WARN
-    org.springframework.security: WARN
-    org.hibernate: ERROR
-    org.hibernate.SQL: WARN
-    com.zaxxer.hikari: ERROR
-    # Otel tracing (muito ruído)
-    io.opentelemetry: WARN
-    # Redis/Lettuce (pool, conexões, cluster — só erro)
-    org.springframework.data.redis: WARN
-    io.lettuce: WARN
-    io.lettuce.core: WARN
-    # RedisCacheService (debug para monitorar L2 hits/misses)
-    #"[solutions.pdroti.lead.enrichment.api.service.RedisCacheService]": DEBUG
+    root: ${LOG_LEVEL_ROOT:WARN}
+    solutions.pdroti: ${LOG_LEVEL_APP:INFO}
+    com.github.benmanes.caffeine.cache: ${LOG_LEVEL_CACHE:WARN}
+    org.xbill.DNS: ${LOG_LEVEL_DNS:ERROR}
+    org.jsoup: ${LOG_LEVEL_JSOUP:ERROR}
+    org.apache.hc.client5.http: ${LOG_LEVEL_HTTP:ERROR}
+    org.springframework: ${LOG_LEVEL_SPRING:WARN}
+    org.springframework.web: ${LOG_LEVEL_SPRING_WEB:ERROR}
+    org.springframework.boot.actuate: ${LOG_LEVEL_ACTUATOR:WARN}
+    org.springframework.security: ${LOG_LEVEL_SECURITY:WARN}
+    org.hibernate: ${LOG_LEVEL_HIBERNATE:ERROR}
+    org.hibernate.SQL: ${LOG_LEVEL_HIBERNATE_SQL:WARN}
+    com.zaxxer.hikari: ${LOG_LEVEL_HIKARI:ERROR}
+    io.opentelemetry: ${LOG_LEVEL_OTEL:WARN}
+    org.springframework.data.redis: ${LOG_LEVEL_REDIS:WARN}
+    io.lettuce: ${LOG_LEVEL_REDIS:WARN}
+    io.lettuce.core: ${LOG_LEVEL_REDIS:WARN}
   pattern:
     console: "%d{HH:mm:ss} %-5level - %msg%n"

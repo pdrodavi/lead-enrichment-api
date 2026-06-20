@@ -1,17 +1,20 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import solutions.pdroti.lead.enrichment.api.config.OpenSerpProxyProperties;
 import solutions.pdroti.lead.enrichment.api.config.OpenSerpProxyProperties.EndpointConfig;
-
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -20,6 +23,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class OpenSerpSearchServiceTest {
 
     @Mock
@@ -37,6 +41,15 @@ class OpenSerpSearchServiceTest {
     @Mock
     private RedisCacheService redisCacheService;
 
+    @Mock
+    private OpenSerpCircuitBreaker circuitBreaker;
+
+    @Mock
+    private OpenSerpRateLimiter rateLimiter;
+
+    @Mock
+    private OpenSerpResponseParser responseParser;
+
     private OpenSerpSearchService openSerpSearchService;
 
     @BeforeEach
@@ -46,8 +59,29 @@ class OpenSerpSearchServiceTest {
 
         when(proxyProperties.getEndpoints()).thenReturn(List.of(endpoint));
 
+        // Mock responseParser.parse() para comportar-se como o parser real
+        var gson = new Gson();
+        when(responseParser.parse(anyString(), anyString())).thenAnswer(invocation -> {
+            String raw = invocation.getArgument(0);
+            if (raw == null || raw.isBlank()) return null;
+            try {
+                JsonElement root = gson.fromJson(raw, JsonElement.class);
+                if (root != null && root.isJsonObject() && root.getAsJsonObject().has("results")) {
+                    return root.getAsJsonObject().get("results").getAsJsonArray();
+                }
+                // Se não for JSON com "results", tenta parse como array simples
+                if (root != null && root.isJsonArray()) {
+                    return root.getAsJsonArray();
+                }
+            } catch (Exception ignored) {
+                // Não é JSON — retorna null (text format não é usado nos testes)
+            }
+            return null;
+        });
+
         openSerpSearchService = new OpenSerpSearchService(
-                proxyProperties, restTemplate, openSerpCache, openSerpHashCache, redisCacheService);
+                proxyProperties, restTemplate, openSerpCache, openSerpHashCache,
+                redisCacheService, circuitBreaker, rateLimiter, responseParser);
     }
 
     @Test
@@ -214,22 +248,14 @@ class OpenSerpSearchServiceTest {
         when(openSerpCache.getIfPresent(anyString())).thenReturn(null);
         when(redisCacheService.get(anyString())).thenReturn(null);
 
-        String textResponse = """
-                Search: João Silva
-                Engines: google
-                
-                Results
-                
-                [1] João Silva - LinkedIn (linkedin.com)
-                Perfil profissional do João Silva
-                URL: https://linkedin.com/in/joaosilva
-                
-                [2] João Silva - GitHub (github.com)
-                Código e projetos
-                URL: https://github.com/joaosilva
+        String jsonResponse = """
+                {"results": [
+                    {"title": "João Silva - LinkedIn", "url": "https://linkedin.com/in/joaosilva", "snippet": "Perfil", "domain": "linkedin.com"},
+                    {"title": "João Silva - GitHub", "url": "https://github.com/joaosilva", "snippet": "Código", "domain": "github.com"}
+                ]}
                 """;
 
-        when(restTemplate.getForObject(anyString(), eq(String.class))).thenReturn(textResponse);
+        when(restTemplate.getForObject(anyString(), eq(String.class))).thenReturn(jsonResponse);
 
         JsonArray results = openSerpSearchService.searchPerson("João Silva");
 
@@ -300,7 +326,8 @@ class OpenSerpSearchServiceTest {
         when(proxyProperties.getApiUrl()).thenReturn("http://fallback:7000");
 
         OpenSerpSearchService service = new OpenSerpSearchService(
-                proxyProperties, restTemplate, openSerpCache, openSerpHashCache, redisCacheService);
+                proxyProperties, restTemplate, openSerpCache, openSerpHashCache,
+                redisCacheService, circuitBreaker, rateLimiter, responseParser);
 
         // Não lançou exceção — usou fallback
         assertNotNull(service);
@@ -312,7 +339,8 @@ class OpenSerpSearchServiceTest {
         when(proxyProperties.getApiUrl()).thenReturn(null);
 
         OpenSerpSearchService service = new OpenSerpSearchService(
-                proxyProperties, restTemplate, openSerpCache, openSerpHashCache, redisCacheService);
+                proxyProperties, restTemplate, openSerpCache, openSerpHashCache,
+                redisCacheService, circuitBreaker, rateLimiter, responseParser);
 
         assertNotNull(service);
     }

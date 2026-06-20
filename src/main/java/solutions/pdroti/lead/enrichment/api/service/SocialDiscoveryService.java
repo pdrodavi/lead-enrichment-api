@@ -196,7 +196,10 @@ public class SocialDiscoveryService {
                 .toList();
 
         return futures.stream()
-                .map(CompletableFuture::join)
+                .map(f -> {
+                    try { return f.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join(); }
+                    catch (Exception e) { log.debug("Timeout no scraping social: {}", e.getMessage()); return null; }
+                })
                 .filter(Objects::nonNull)
                 .toList();
     }

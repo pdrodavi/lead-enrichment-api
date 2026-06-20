@@ -106,6 +106,7 @@ class TechScraperServiceTest {
         when(properties.getSignatures()).thenReturn(Map.of());
         when(properties.getScriptDetectors()).thenReturn(Map.of());
         when(properties.getMetaGenerators()).thenReturn(Map.of());
+        when(properties.getPropertyDetectors()).thenReturn(Map.of("fb:app_id", "Facebook App"));
 
         var result = techScraperService.scrapeTechnologies("exemplo.com");
 
@@ -340,6 +341,7 @@ class TechScraperServiceTest {
         when(properties.getSignatures()).thenReturn(Map.of());
         when(properties.getScriptDetectors()).thenReturn(Map.of());
         when(properties.getMetaGenerators()).thenReturn(Map.of());
+        when(properties.getPropertyDetectors()).thenReturn(Map.of("twitter:", "Twitter Cards"));
 
         var result = techScraperService.scrapeTechnologies("exemplo.com");
 

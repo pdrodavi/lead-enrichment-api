@@ -208,24 +208,25 @@ public class RdapService {
         String taxpayerId = null;
 
         JsonNode entities = root.get("entities");
-        if (entities != null && entities.isArray()) {
-            for (JsonNode entity : entities) {
-                List<String> roles = extractRoles(entity);
-                String fn = extractFnFromVcard(entity);
+        if (entities == null || !entities.isArray()) {
+            return new EntityData(registrar, registrantName, registrantEmail, taxpayerId);
+        }
+        for (JsonNode entity : entities) {
+            List<String> roles = extractRoles(entity);
+            String fn = extractFnFromVcard(entity);
 
-                if (roles.contains("registrar")) {
-                    registrar = fn;
-                    registrantEmail = findAbuseEmail(entity, registrantEmail);
-                }
-                if (roles.contains("registrant") || roles.contains("administrative")) {
-                    registrantName = updateIfNull(registrantName, fn);
-                    registrantEmail = findEmailFromEntity(entity, registrantEmail);
-                    taxpayerId = extractTaxpayerId(entity);
-                }
-                if (roles.contains("technical")) {
-                    registrantName = updateIfNull(registrantName, fn);
-                    registrantEmail = findEmailFromEntity(entity, registrantEmail);
-                }
+            if (roles.contains("registrar")) {
+                registrar = fn;
+                registrantEmail = findAbuseEmail(entity, registrantEmail);
+            }
+            if (roles.contains("registrant") || roles.contains("administrative")) {
+                if (registrantName == null) registrantName = fn;
+                if (registrantEmail == null) registrantEmail = findEmailFromEntity(entity, null);
+                if (taxpayerId == null) taxpayerId = extractTaxpayerId(entity);
+            }
+            if (roles.contains("technical")) {
+                if (registrantName == null) registrantName = fn;
+                if (registrantEmail == null) registrantEmail = findEmailFromEntity(entity, null);
             }
         }
         return new EntityData(registrar, registrantName, registrantEmail, taxpayerId);
@@ -313,8 +314,8 @@ public class RdapService {
                     }
                 }
             }
-        } catch (Exception ignored) {
-            // JSON malformado ou estrutura inesperada — retorna null
+        } catch (Exception e) {
+            log.trace("Falha ao extrair '{}' do vcardArray: {}", fieldName, e.getMessage());
         }
         return null;
     }
@@ -342,8 +343,8 @@ public class RdapService {
                     }
                 }
             }
-        } catch (Exception ignored) {
-            // JSON malformado ou evento ausente — retorna null
+        } catch (Exception e) {
+            log.trace("Falha ao buscar evento '{}': {}", action, e.getMessage());
         }
         return null;
     }
@@ -360,7 +361,7 @@ public class RdapService {
                 !preferred.nameservers().isEmpty() ? preferred.nameservers() : fallback.nameservers(),
                 !preferred.status().isEmpty() ? preferred.status() : fallback.status(),
                 preferred.taxpayerId() != null ? preferred.taxpayerId() : fallback.taxpayerId(),
-                "registrobr"
+                preferred.source() != null ? preferred.source() : "identitydigital"
         );
     }
 }

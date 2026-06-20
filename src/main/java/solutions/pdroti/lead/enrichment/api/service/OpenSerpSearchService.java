@@ -68,35 +68,25 @@ public class OpenSerpSearchService {
     private static final int DEFAULT_LIMIT = 30;
 
     /** Delay mínimo entre requisições ao OpenSERP (rate limiting). */
-    private static final long MIN_DELAY_MS = 2_000;
-
     /** Máximo de retentativas com backoff exponencial. */
     private static final int MAX_RETRIES = 2;
 
     /** Backoff inicial para retry (1s * 2^attempt). */
     private static final long BASE_BACKOFF_MS = 1_000;
 
-    /** Número máximo de CAPTCHAs consecutivos antes do circuit breaker abrir. */
-    private static final int CIRCUIT_BREAKER_THRESHOLD = 3;
-
-    /** Tempo de pausa do circuit breaker ao abrir. */
-    private static final Duration CIRCUIT_BREAKER_COOLDOWN = Duration.ofMinutes(5);
-
     private final RestTemplate restTemplate;
     private final Gson gson;
     private final Cache<String, JsonArray> openSerpCache;
     private final ContentTracker contentTracker;
+    private final OpenSerpCircuitBreaker circuitBreaker;
+    private final OpenSerpRateLimiter rateLimiter;
+    private final OpenSerpResponseParser responseParser;
 
     /** Lista de endpoints configurados (com proxy opcional). */
     private final List<EndpointEntry> endpoints = new CopyOnWriteArrayList<>();
 
     /** Índice round-robin para rotação de endpoints. */
     private final AtomicInteger endpointIndex = new AtomicInteger(0);
-
-    // === Circuit breaker state ===
-    private final AtomicInteger consecutiveCaptchas = new AtomicInteger(0);
-    private final AtomicReference<Instant> circuitBreakerOpenedAt = new AtomicReference<>(null);
-    private volatile Instant lastRequestTime = Instant.EPOCH;
 
     /** Endpoint único com URL normalizada e proxy opcional. */
     private record EndpointEntry(String baseUrl, String proxy) {
@@ -116,12 +106,18 @@ public class OpenSerpSearchService {
             RestTemplate openSerpRestTemplate,
             Cache<String, JsonArray> openSerpCache,
             Cache<String, String> openSerpHashCache,
-            RedisCacheService redisCacheService) {
+            RedisCacheService redisCacheService,
+            OpenSerpCircuitBreaker circuitBreaker,
+            OpenSerpRateLimiter rateLimiter,
+            OpenSerpResponseParser responseParser) {
         this.restTemplate = openSerpRestTemplate;
         this.gson = new GsonBuilder().setStrictness(Strictness.LENIENT).create();
         this.openSerpCache = openSerpCache;
         this.contentTracker = new ContentTracker(openSerpHashCache, "OpenSERP");
         this.redisCacheService = redisCacheService;
+        this.circuitBreaker = circuitBreaker;
+        this.rateLimiter = rateLimiter;
+        this.responseParser = responseParser;
 
         // Carrega endpoints da configuração
         List<EndpointConfig> configured = proxyProperties.getEndpoints();
@@ -180,17 +176,14 @@ public class OpenSerpSearchService {
             }
         }
 
-        enforceRateLimit();
+        rateLimiter.acquire();
         JsonArray results = fetcher.get();
         JsonArray finalResults = results != null ? results : new JsonArray();
 
-        // Detecta se o conteúdo mudou em relação ao cache anterior (hash SHA-256)
         contentTracker.trackContentChange(cacheKey, finalResults.toString());
 
-        // Cópia defensiva: serializa e desserializa para evitar corrupção do cache
         JsonArray cacheCopy = gson.fromJson(finalResults.toString(), JsonArray.class);
         openSerpCache.put(cacheKey, cacheCopy);
-        // Popula Redis (L2) de forma assíncrona — não bloqueia a resposta
         redisCacheService.setAsync(cacheKey, 1800, finalResults.toString());
         log.info("Cache populado [{}] — {} resultados", cacheKey, cacheCopy.size());
         return finalResults;
@@ -220,7 +213,7 @@ public class OpenSerpSearchService {
      * @return JsonArray com a lista de resultados (título, url, snippet, domínio)
      */
     public JsonArray searchPerson(String name, int limit) {
-        if (isCircuitBreakerOpen()) {
+        if (circuitBreaker.isOpen()) {
             log.debug("OpenSERP circuit breaker aberto — pulando busca para '{}'", name);
             return new JsonArray();
         }
@@ -268,8 +261,8 @@ public class OpenSerpSearchService {
         String url = buildSearchUrl(ep, encodedQuery, limit);
         try {
             String raw = restTemplate.getForObject(url, String.class);
-            consecutiveCaptchas.set(0);
-            return parseResponse(raw, label);
+            circuitBreaker.reset();
+            return responseParser.parse(raw, label);
         } catch (HttpClientErrorException e) {
             if (isCaptchaError(e)) {
                 return handleCaptcha(encodedQuery, label, attempt, limit);
@@ -324,17 +317,8 @@ public class OpenSerpSearchService {
      */
     private JsonArray handleCaptcha(String encodedQuery, String label,
                                      int attempt, int limit) {
-        int count = consecutiveCaptchas.incrementAndGet();
-        log.warn("OpenSERP CAPTCHA #{} para '{}'", count, label);
-
-        if (count >= CIRCUIT_BREAKER_THRESHOLD) {
-            circuitBreakerOpenedAt.set(Instant.now());
-            log.error("OpenSERP circuit breaker ABERTO — Google está bloqueando com CAPTCHA. " +
-                    "Pausando por {} minutos. Configure proxies ou endpoints adicionais " +
-                    "em open-serp.endpoints no application.yml.",
-                    CIRCUIT_BREAKER_COOLDOWN.toMinutes());
-            return null;
-        }
+        boolean opened = circuitBreaker.recordCaptcha();
+        if (opened) return null;
 
         // Tenta próximo endpoint primeiro (failover)
         if (endpoints.size() > 1) {
@@ -362,151 +346,6 @@ public class OpenSerpSearchService {
     }
 
     /**
-     * Verifica se o circuit breaker está aberto (cooldown ainda não expirou).
-     */
-    private boolean isCircuitBreakerOpen() {
-        Instant opened = circuitBreakerOpenedAt.get();
-        if (opened == null) return false;
-        if (Instant.now().isAfter(opened.plus(CIRCUIT_BREAKER_COOLDOWN))) {
-            circuitBreakerOpenedAt.set(null);
-            consecutiveCaptchas.set(0);
-            log.debug("OpenSERP circuit breaker fechado — retomando operação após cooldown");
-            return false;
-        }
-        return true;
-    }
-
-    /** Garante delay mínimo entre requisições para evitar rate limiting. */
-    private void enforceRateLimit() {
-        long elapsed = Duration.between(lastRequestTime, Instant.now()).toMillis();
-        if (elapsed < MIN_DELAY_MS) {
-            try {
-                Thread.sleep(MIN_DELAY_MS - elapsed);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        lastRequestTime = Instant.now();
-    }
-
-    /**
-     * Executa a requisição HTTP e faz o parse seguro da resposta.
-     */
-    private JsonArray parseResponse(String raw, String label) {
-        if (raw == null || raw.isBlank()) {
-            log.debug("OpenSERP retornou resposta vazia para '{}'", label);
-            return null;
-        }
-
-        raw = raw.trim();
-
-        // 1. Tenta parse como JSON primeiro
-        JsonArray jsonResults = tryParseAsJson(raw);
-        if (jsonResults != null) {
-            return jsonResults;
-        }
-
-        // 2. Fallback: parse do formato texto/table do OpenSERP
-        JsonArray textResults = parseTextResponse(raw);
-        if (textResults != null && !textResults.isEmpty()) {
-            log.debug("OpenSERP: {} resultados extraídos do formato texto para '{}'",
-                    textResults.size(), label);
-            return textResults;
-        }
-
-        log.debug("OpenSERP: não foi possível extrair resultados de '{}'", label);
-        return null;
-    }
-
-    /**
-     * Tenta interpretar a resposta como JSON e extrair o array "results".
-     */
-    private JsonArray tryParseAsJson(String raw) {
-        try {
-            JsonElement root = gson.fromJson(raw, JsonElement.class);
-
-            if (root == null || root.isJsonNull() || !root.isJsonObject()) {
-                return null;
-            }
-
-            JsonObject obj = root.getAsJsonObject();
-            if (!obj.has("results")) {
-                return null;
-            }
-
-            JsonElement resultsEl = obj.get("results");
-            if (resultsEl.isJsonArray()) {
-                return resultsEl.getAsJsonArray();
-            }
-
-            return null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * Padrão para linha <code>URL: https://...</code>
-     */
-    private static final Pattern URL_LINE = Pattern.compile("^URL:\\s*(\\S.*)$", Pattern.MULTILINE);
-
-    /**
-     * Padrão que captura cada bloco de resultado individual no formato texto.
-     * Agrupa desde o header [N] até o próximo header [N] ou fim do texto.
-     */
-    private static final Pattern RESULT_BLOCK = Pattern.compile(
-            "^\\[(\\d+)\\]\\s+(.+?)\\s+\\(([^)]+)\\)$\\n?(.*?)(?=^\\[\\d+\\]|\\z)",
-            Pattern.MULTILINE | Pattern.DOTALL);
-
-    /**
-     * Parseia a resposta em formato texto/table do OpenSERP.
-     * <p>
-     * Formato esperado:
-     * <pre>
-     * Search: Pedro Davi
-     * Engines: google
-     *
-     * Results
-     *
-     * [1] Título (dominio.com)
-     * Descrição/snippet...
-     * URL: https://...
-     *
-     * [2] Outro título (outro.com)
-     * ...
-     * </pre>
-     */
-    private JsonArray parseTextResponse(String raw) {
-        JsonArray results = new JsonArray();
-
-        Matcher matcher = RESULT_BLOCK.matcher(raw);
-        while (matcher.find()) {
-            String title = matcher.group(2).trim();
-            String domain = matcher.group(3).trim();
-            String body = matcher.group(4) != null ? matcher.group(4).trim() : "";
-
-            // Extrai URL do corpo do bloco
-            String url = "";
-            String snippet = body;
-            Matcher urlMatcher = URL_LINE.matcher(body);
-            if (urlMatcher.find()) {
-                url = urlMatcher.group(1).trim();
-                // Remove a linha "URL:" do snippet
-                snippet = body.substring(0, urlMatcher.start()).trim();
-            }
-
-            JsonObject item = new JsonObject();
-            item.add("title", new JsonPrimitive(title));
-            item.add("url", new JsonPrimitive(url));
-            item.add("snippet", new JsonPrimitive(snippet));
-            item.add("domain", new JsonPrimitive(domain));
-            results.add(item);
-        }
-
-        return results;
-    }
-
-    /**
      * Executa uma busca genérica e retorna os resultados.
      *
      * @param query termos da busca (já deve estar limpa)
@@ -515,7 +354,7 @@ public class OpenSerpSearchService {
      * @return JsonArray com resultados
      */
     public JsonArray search(String query, String label, int limit) {
-        if (isCircuitBreakerOpen()) {
+        if (circuitBreaker.isOpen()) {
             log.debug("OpenSERP circuit breaker aberto — pulando busca '{}'", label);
             return new JsonArray();
         }
@@ -537,7 +376,7 @@ public class OpenSerpSearchService {
      * @return JsonArray consolidado de documentos encontrados
      */
     public JsonArray searchDocuments(String name, int limit) {
-        if (isCircuitBreakerOpen()) {
+        if (circuitBreaker.isOpen()) {
             log.debug("OpenSERP circuit breaker aberto — pulando busca de documentos para '{}'", name);
             return new JsonArray();
         }
@@ -549,7 +388,7 @@ public class OpenSerpSearchService {
             String[] fileTypes = {"pdf", "doc", "docx"};
 
             for (String fileType : fileTypes) {
-                enforceRateLimit();
+                rateLimiter.acquire();
                 String query = "\"" + name + "\" filetype:" + fileType;
                 String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
                 EndpointEntry ep = nextEndpoint();
@@ -572,44 +411,17 @@ public class OpenSerpSearchService {
      * Ex: {@code "Nome" (linkedin OR facebook OR instagram)}.
      */
     public JsonArray searchSocialMedia(String name, int limit) {
-        if (isCircuitBreakerOpen()) {
+        if (circuitBreaker.isOpen()) {
             log.warn("OpenSERP circuit breaker aberto — pulando busca social para '{}'", name);
             return new JsonArray();
         }
-
         String cacheKey = "social:" + name.toLowerCase().strip() + ":" + limit;
-
-        // L1 - Caffeine local
-        JsonArray cached = openSerpCache.getIfPresent(cacheKey);
-        if (cached != null) {
-            log.debug("OpenSERP cache L1 hit para social '{}' ({} resultados)", name, cached.size());
-            return gson.fromJson(cached.toString(), JsonArray.class);
-        }
-        log.info("OpenSERP cache MISS para social '{}'", name);
-
-        // L2 - Redis
-        String fromRedis = redisCacheService.get(cacheKey);
-        if (fromRedis != null) {
-            try {
-                JsonArray parsed = gson.fromJson(fromRedis, JsonArray.class);
-                openSerpCache.put(cacheKey, parsed);
-                log.info("Cache L2 Redis hit para social '{}'", name);
-                return parsed;
-            } catch (Exception e) {
-                log.debug("OpenSERP Redis parse falhou para social '{}'", name);
-            }
-        }
-
-        enforceRateLimit();
-        String query = "\"" + name + "\" (linkedin OR instagram OR facebook OR twitter OR github OR tiktok)";
-        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
-        EndpointEntry ep = nextEndpoint();
-        JsonArray results = fetchWithRetry(ep, encodedQuery, name + " social", 0, limit);
-        JsonArray finalResults = results != null ? results : new JsonArray();
-
-        openSerpCache.put(cacheKey, finalResults);
-        redisCacheService.setAsync(cacheKey, 1800, finalResults.toString());
-        return finalResults;
+        return getOrFetch(cacheKey, "social " + name, () -> {
+            String query = "\"" + name + "\" (linkedin OR instagram OR facebook OR twitter OR github OR tiktok)";
+            String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+            EndpointEntry ep = nextEndpoint();
+            return fetchWithRetry(ep, encodedQuery, name + " social", 0, limit);
+        });
     }
 
     /**
@@ -617,44 +429,17 @@ public class OpenSerpSearchService {
      * Ex: {@code "Nome" (linkedin OR github OR "about.me" OR "portfolio")}.
      */
     public JsonArray searchProfessional(String name, int limit) {
-        if (isCircuitBreakerOpen()) {
+        if (circuitBreaker.isOpen()) {
             log.warn("OpenSERP circuit breaker aberto — pulando busca profissional para '{}'", name);
             return new JsonArray();
         }
-
         String cacheKey = "prof:" + name.toLowerCase().strip() + ":" + limit;
-
-        // L1 - Caffeine local
-        JsonArray cached = openSerpCache.getIfPresent(cacheKey);
-        if (cached != null) {
-            log.debug("OpenSERP cache L1 hit para prof '{}' ({} resultados)", name, cached.size());
-            return gson.fromJson(cached.toString(), JsonArray.class);
-        }
-        log.info("OpenSERP cache MISS para prof '{}'", name);
-
-        // L2 - Redis
-        String fromRedis = redisCacheService.get(cacheKey);
-        if (fromRedis != null) {
-            try {
-                JsonArray parsed = gson.fromJson(fromRedis, JsonArray.class);
-                openSerpCache.put(cacheKey, parsed);
-                log.info("Cache L2 Redis hit para prof '{}'", name);
-                return parsed;
-            } catch (Exception e) {
-                log.debug("OpenSERP Redis parse falhou para prof '{}'", name);
-            }
-        }
-
-        enforceRateLimit();
-        String query = "\"" + name + "\" (linkedin OR github OR \"about.me\" OR lattes OR currículo OR CV)";
-        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
-        EndpointEntry ep = nextEndpoint();
-        JsonArray results = fetchWithRetry(ep, encodedQuery, name + " professional", 0, limit);
-        JsonArray finalResults = results != null ? results : new JsonArray();
-
-        openSerpCache.put(cacheKey, finalResults);
-        redisCacheService.setAsync(cacheKey, 1800, finalResults.toString());
-        return finalResults;
+        return getOrFetch(cacheKey, "prof " + name, () -> {
+            String query = "\"" + name + "\" (linkedin OR github OR \"about.me\" OR lattes OR currículo OR CV)";
+            String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+            EndpointEntry ep = nextEndpoint();
+            return fetchWithRetry(ep, encodedQuery, name + " professional", 0, limit);
+        });
     }
 
     /**
@@ -662,44 +447,17 @@ public class OpenSerpSearchService {
      * Ex: {@code "Nome" (email OR contato OR telefone OR phone)}.
      */
     public JsonArray searchContact(String name, int limit) {
-        if (isCircuitBreakerOpen()) {
+        if (circuitBreaker.isOpen()) {
             log.warn("OpenSERP circuit breaker aberto — pulando busca de contato para '{}'", name);
             return new JsonArray();
         }
-
         String cacheKey = "contact:" + name.toLowerCase().strip() + ":" + limit;
-
-        // L1 - Caffeine local
-        JsonArray cached = openSerpCache.getIfPresent(cacheKey);
-        if (cached != null) {
-            log.debug("OpenSERP cache L1 hit para contact '{}' ({} resultados)", name, cached.size());
-            return gson.fromJson(cached.toString(), JsonArray.class);
-        }
-        log.info("OpenSERP cache MISS para contact '{}'", name);
-
-        // L2 - Redis
-        String fromRedis = redisCacheService.get(cacheKey);
-        if (fromRedis != null) {
-            try {
-                JsonArray parsed = gson.fromJson(fromRedis, JsonArray.class);
-                openSerpCache.put(cacheKey, parsed);
-                log.info("Cache L2 Redis hit para contact '{}'", name);
-                return parsed;
-            } catch (Exception e) {
-                log.debug("OpenSERP Redis parse falhou para contact '{}'", name);
-            }
-        }
-
-        enforceRateLimit();
-        String query = "\"" + name + "\" (email OR contato OR contact OR telefone OR phone OR WhatsApp)";
-        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
-        EndpointEntry ep = nextEndpoint();
-        JsonArray results = fetchWithRetry(ep, encodedQuery, name + " contact", 0, limit);
-        JsonArray finalResults = results != null ? results : new JsonArray();
-
-        openSerpCache.put(cacheKey, finalResults);
-        redisCacheService.setAsync(cacheKey, 1800, finalResults.toString());
-        return finalResults;
+        return getOrFetch(cacheKey, "contact " + name, () -> {
+            String query = "\"" + name + "\" (email OR contato OR contact OR telefone OR phone OR WhatsApp)";
+            String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+            EndpointEntry ep = nextEndpoint();
+            return fetchWithRetry(ep, encodedQuery, name + " contact", 0, limit);
+        });
     }
 
     /**
@@ -707,43 +465,16 @@ public class OpenSerpSearchService {
      * Ex: {@code "Nome" (notícia OR news OR release)}.
      */
     public JsonArray searchNews(String name, int limit) {
-        if (isCircuitBreakerOpen()) {
+        if (circuitBreaker.isOpen()) {
             log.warn("OpenSERP circuit breaker aberto — pulando busca de notícias para '{}'", name);
             return new JsonArray();
         }
-
         String cacheKey = "news:" + name.toLowerCase().strip() + ":" + limit;
-
-        // L1 - Caffeine local
-        JsonArray cached = openSerpCache.getIfPresent(cacheKey);
-        if (cached != null) {
-            log.debug("OpenSERP cache L1 hit para news '{}' ({} resultados)", name, cached.size());
-            return gson.fromJson(cached.toString(), JsonArray.class);
-        }
-        log.info("OpenSERP cache MISS para news '{}'", name);
-
-        // L2 - Redis
-        String fromRedis = redisCacheService.get(cacheKey);
-        if (fromRedis != null) {
-            try {
-                JsonArray parsed = gson.fromJson(fromRedis, JsonArray.class);
-                openSerpCache.put(cacheKey, parsed);
-                log.info("Cache L2 Redis hit para news '{}'", name);
-                return parsed;
-            } catch (Exception e) {
-                log.debug("OpenSERP Redis parse falhou para news '{}'", name);
-            }
-        }
-
-        enforceRateLimit();
-        String query = "\"" + name + "\" (notícia OR news OR release OR artigo OR article OR entrevista)";
+        return getOrFetch(cacheKey, "news " + name, () -> {
+            String query = "\"" + name + "\" (notícia OR news OR release OR artigo OR article OR entrevista)";
         String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
         EndpointEntry ep = nextEndpoint();
-        JsonArray results = fetchWithRetry(ep, encodedQuery, name + " news", 0, limit);
-        JsonArray finalResults = results != null ? results : new JsonArray();
-
-        openSerpCache.put(cacheKey, finalResults);
-        redisCacheService.setAsync(cacheKey, 1800, finalResults.toString());
-        return finalResults;
+        return fetchWithRetry(ep, encodedQuery, name + " news", 0, limit);
+        });
     }
 }
