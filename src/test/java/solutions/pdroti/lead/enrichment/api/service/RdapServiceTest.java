@@ -552,4 +552,72 @@ class RdapServiceTest {
         assertEquals("Reg", result.registrar());
         assertNotEquals("tech@reg.com", result.registrantEmail());
     }
+
+    // ========== mergeResults - fallback fields ==========
+
+    @Test
+    void lookupWithComBrAndIdentityHasRegistrarFallsBack() throws Exception {
+        String identityJson = """
+                {"entities": [{
+                    "roles": ["registrar"],
+                    "vcardArray": ["vcard", [["fn", {}, "text", "Fallback Registrar"]]]
+                }]}
+                """;
+        String registroBrJson = """
+                {"entities": [{
+                    "roles": ["registrant"],
+                    "vcardArray": ["vcard", [["fn", {}, "text", "Registrant Only"]]]
+                }]}
+                """;
+        when(rdapCache.getIfPresent(DOMAIN_COM_BR)).thenReturn(null);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(httpResponse);
+        when(httpResponse.statusCode()).thenReturn(200);
+        when(httpResponse.body())
+                .thenReturn(identityJson)
+                .thenReturn(registroBrJson);
+
+        RdapData result = rdapService.lookup(DOMAIN_COM_BR);
+
+        // Registrar deve vir do fallback (Identity) pois Registro.br não tem registrar
+        assertEquals("Fallback Registrar", result.registrar());
+        // RegistrantName deve vir do preferred (Registro.br)
+        assertEquals("Registrant Only", result.registrantName());
+    }
+
+    @Test
+    void lookupWithComBrAndIdentityHasNameserversFallsBack() throws Exception {
+        String identityJson = """
+                {"nameservers": [{"ldhName": "ns1.fallback.com"}],
+                 "status": ["client hold"],
+                 "events": [
+                    {"eventAction": "registration", "eventDate": "2020-01-01T00:00:00Z"},
+                    {"eventAction": "expiration", "eventDate": "2025-01-01T00:00:00Z"}
+                 ],
+                 "entities": [{
+                    "roles": ["registrar"],
+                    "vcardArray": ["vcard", [["fn", {}, "text", "Registrar"]]]
+                 }]}
+                """;
+        String registroBrJson = """
+                {"entities": [{
+                    "roles": ["registrant"],
+                    "vcardArray": ["vcard", [["fn", {}, "text", "Titular"]]]
+                }]}
+                """;
+        when(rdapCache.getIfPresent(DOMAIN_COM_BR)).thenReturn(null);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(httpResponse);
+        when(httpResponse.statusCode()).thenReturn(200);
+        when(httpResponse.body())
+                .thenReturn(identityJson)
+                .thenReturn(registroBrJson);
+
+        RdapData result = rdapService.lookup(DOMAIN_COM_BR);
+
+        assertTrue(result.nameservers().contains("ns1.fallback.com"));
+        assertTrue(result.status().contains("client hold"));
+        assertEquals("2020-01-01T00:00:00Z", result.registrationDate());
+        assertEquals("2025-01-01T00:00:00Z", result.expirationDate());
+    }
 }

@@ -425,4 +425,50 @@ class TechScraperServiceTest {
         assertTrue(result.openGraph().containsKey("og:title"));
         assertTrue(result.twitterCards().containsKey("twitter:site"));
     }
+
+    // ========== nameMatchesExactly - boundary conditions ==========
+
+    @Test
+    void findNameInPage_comNomeComoSubstring_deveIgnorar() {
+        // "ana" dentro de "mariana" não deve dar match
+        String html = "<html><body>mariana e ana maria</body></html>";
+        when(restTemplate.getForObject("https://exemplo.com", String.class)).thenReturn(html);
+
+        var result = techScraperService.findNameInPage("exemplo.com", "ana");
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void findNameInPage_comNomeNoInicioDoTexto_deveEncontrar() {
+        String html = "<html><body>João Silva é engenheiro</body></html>";
+        when(restTemplate.getForObject("https://joaosilva.com", String.class)).thenReturn(html);
+
+        var result = techScraperService.findNameInPage("joaosilva.com", "João Silva");
+
+        assertFalse(result.isEmpty());
+    }
+
+    @Test
+    void findNameInPage_comNomeNoFimDoTexto_deveEncontrar() {
+        String html = "<html><body>Engenheiro: João Silva</body></html>";
+        when(restTemplate.getForObject("https://joaosilva.com", String.class)).thenReturn(html);
+
+        var result = techScraperService.findNameInPage("joaosilva.com", "João Silva");
+
+        assertFalse(result.isEmpty());
+    }
+
+    @Test
+    void scrapeTechnologiesAndCheckName_comNomeMatchExatoNoMeio_deveEncontrar() {
+        String html = "<html><head><title>Dr. João Silva, MD</title></head><body>Consulte João Silva para mais informações</body></html>";
+        when(restTemplate.getForObject("https://joaosilva.com", String.class)).thenReturn(html);
+        when(properties.getSignatures()).thenReturn(Map.of());
+        when(properties.getScriptDetectors()).thenReturn(Map.of());
+        when(properties.getMetaGenerators()).thenReturn(Map.of());
+
+        var result = techScraperService.scrapeTechnologiesAndCheckName("joaosilva.com", "João Silva");
+
+        assertFalse(result.nameMentions().isEmpty());
+    }
 }
