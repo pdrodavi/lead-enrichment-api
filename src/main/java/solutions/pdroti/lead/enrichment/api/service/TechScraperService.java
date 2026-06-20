@@ -323,9 +323,7 @@ public class TechScraperService {
             }
         } catch (Exception e) {
             log.warn("Erro ao scrapear {}: {}", domain, e.getMessage());
-            if (technologies.isEmpty()) {
-                handleScrapeError(e, technologies);
-            }
+            handleScrapeError(e, technologies);
         }
 
         return new ScrapeResult(List.copyOf(technologies), nameMentions);

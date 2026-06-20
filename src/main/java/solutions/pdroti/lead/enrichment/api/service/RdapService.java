@@ -152,7 +152,7 @@ public class RdapService {
             Thread.currentThread().interrupt();
             log.debug("RDAP {} interrompida: {}", url, e.getMessage());
             return null;
-        } catch (Exception e) {
+        } catch (java.io.IOException e) {
             log.debug("Falha ao conectar em {}: {}", url, e.getMessage());
             return null;
         }
