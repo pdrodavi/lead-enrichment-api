@@ -60,6 +60,13 @@ class EncryptionServiceTest {
             new EncryptionService("curto"));
     }
 
+    @Test
+    void validateConfig_comSecretValido_devePassar() {
+        // validateConfig() é chamado pelo Spring via @PostConstruct
+        // Como package-private, podemos chamar diretamente no teste
+        assertDoesNotThrow(() -> encryptionService.validateConfig());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
         "joao.silva@gmail.com",
