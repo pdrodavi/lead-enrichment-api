@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
@@ -18,6 +19,9 @@ import java.io.IOException;
  * <p>
  * Endpoints públicos (actuator, Swagger/OpenAPI) são ignorados.
  * Retorna HTTP 401 com JSON de erro se a chave estiver ausente ou incorreta.
+ * <p>
+ * <b>Segurança:</b> Valida em {@link PostConstruct} se {@code API_KEY} foi configurada,
+ * impedindo a inicialização sem credencial — fail rápido em vez de aceitar default.
  */
 @Slf4j
 @Component
@@ -35,6 +39,14 @@ public class ApiKeyFilter extends OncePerRequestFilter {
 
     public ApiKeyFilter(@Value("${api.key}") String expectedApiKey) {
         this.expectedApiKey = expectedApiKey;
+    }
+
+    @PostConstruct
+    void validateConfig() {
+        if (expectedApiKey == null || expectedApiKey.isBlank()) {
+            log.error("API_KEY não configurada. Defina a variável de ambiente API_KEY.");
+            throw new IllegalStateException("API_KEY é obrigatória");
+        }
     }
 
     /**

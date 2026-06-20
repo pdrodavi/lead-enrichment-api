@@ -270,7 +270,7 @@ public class LeadService {
      * @param email       e-mail completo da pessoa
      * @return lista filtrada contendo apenas links que correspondem à pessoa
      */
-    private static List<String> filterSocialLinksByPerson(List<String> socialLinks, String name, String email) {
+    static List<String> filterSocialLinksByPerson(List<String> socialLinks, String name, String email) {
         if (socialLinks == null || socialLinks.isEmpty()) return new ArrayList<>();
         if (name == null && email == null) return new ArrayList<>();
 

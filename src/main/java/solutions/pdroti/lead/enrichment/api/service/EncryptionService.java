@@ -1,5 +1,7 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -18,7 +20,11 @@ import java.util.Base64;
  * Utiliza AES-128-GCM com IV aleatório de 12 bytes para cada operação.
  * O formato do dado criptografado é: {@code Base64(IV(12) + ciphertext(N))}.
  * Atende aos requisitos de proteção de dados pessoais (LGPD).
+ * <p>
+ * <b>Segurança:</b> Valida em {@link PostConstruct} se {@code ENCRYPTION_SECRET}
+ * foi configurada, impedindo inicialização sem chave.
  */
+@Slf4j
 @Service
 public class EncryptionService {
 
@@ -52,6 +58,15 @@ public class EncryptionService {
                     "Chave de criptografia deve ter pelo menos " + KEY_SIZE_BYTES + " bytes");
         }
         this.secretKey = new SecretKeySpec(Arrays.copyOf(raw, KEY_SIZE_BYTES), "AES");
+    }
+
+    @PostConstruct
+    void validateConfig() {
+        if (secretKey == null) {
+            log.error("ENCRYPTION_SECRET não configurada. Defina a variável de ambiente ENCRYPTION_SECRET.");
+            throw new IllegalStateException("ENCRYPTION_SECRET é obrigatória");
+        }
+        log.info("Criptografia AES-128-GCM inicializada com chave de {} bytes", KEY_SIZE_BYTES);
     }
 
     /**

@@ -47,6 +47,12 @@ public class TechScraperProperties {
      */
     private Map<String, String> metaGenerators = new LinkedHashMap<>();
 
+    /**
+     * Detectores por prefixo de meta property.
+     * Chave = prefixo da property (ex: "og:"), Valor = nome da tecnologia.
+     */
+    private Map<String, String> propertyDetectors = new LinkedHashMap<>();
+
     public Map<String, List<String>> getSignatures() { return signatures; }
     public void setSignatures(Map<String, List<String>> signatures) { this.signatures = signatures; }
 
@@ -55,4 +61,7 @@ public class TechScraperProperties {
 
     public Map<String, String> getMetaGenerators() { return metaGenerators; }
     public void setMetaGenerators(Map<String, String> metaGenerators) { this.metaGenerators = metaGenerators; }
+
+    public Map<String, String> getPropertyDetectors() { return propertyDetectors; }
+    public void setPropertyDetectors(Map<String, String> propertyDetectors) { this.propertyDetectors = propertyDetectors; }
 }

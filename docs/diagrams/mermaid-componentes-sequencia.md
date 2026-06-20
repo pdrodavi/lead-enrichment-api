@@ -30,11 +30,16 @@ graph TB
         LDS["LeadDeletionService<br/>Hard delete (1 query)"]
         DNS["DnsValidationService<br/>dnsjava — 5 tipos DNS<br/>Cache Caffeine 1h"]
         TSS["TechScraperService<br/>Jsoup — 90+ assinaturas<br/>Cache Caffeine 1h"]
-        SDS["SocialDiscoveryService<br/>Jsoup — 31 plataformas<br/>2 caches Caffeine"]
+        SDS["SocialDiscoveryService<br/>Jsoup — 33 plataformas<br/>2 caches Caffeine"]
         RS["RdapService<br/>Identity Digital + Registro.br<br/>Cache Caffeine 1h"]
         OSS["OpenSerpSearch<br/>Cache L1 Caffeine + L2 Redis<br/>Circuit breaker + rate limit"]
+        OCB["OpenSerpCircuitBreaker<br/>3 CAPTCHAs → 5min cooldown"]
+        ORP["OpenSerpResponseParser<br/>JSON + texto/table"]
+        ORL["OpenSerpRateLimiter<br/>2s entre requisições"]
         RCS["RedisCacheService<br/>L2 distribuído<br/>Async set + fallback"]
         ES["EncryptionService<br/>AES-128-GCM"]
+        DCS["DotComScrapingService<br/>Scraping .com/.com.br<br/>via OpenSERP URLs"]
+        ESM["EnrichmentSnapshotManager<br/>Snapshot/Restore<br/>Proteção contra perda de dados"]
     end
 
     subgraph "Camada Utilitária"
@@ -70,6 +75,8 @@ graph TB
     LS --> LDS
     LS --> DP
     LS --> EU
+    LS --> ESM
+    DE --> DCS
 
     OSE --> OSS
     OSE --> SDS
@@ -79,6 +86,9 @@ graph TB
     DE --> SDS
     DE --> RS
 
+    OSS --> OCB
+    OSS --> ORP
+    OSS --> ORL
     OSS --> OSP
     RCS --> REDIS
 

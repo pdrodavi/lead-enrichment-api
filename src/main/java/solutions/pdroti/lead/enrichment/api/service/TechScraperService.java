@@ -181,12 +181,12 @@ public class TechScraperService {
     }
 
     /** Detecta tecnologias via meta property (Open Graph, Twitter Cards). */
-    private static void detectByMetaProperties(Document doc, Set<String> technologies) {
+    private void detectByMetaProperties(Document doc, Set<String> technologies) {
         doc.select("meta[property]").forEach(meta -> {
             String property = meta.attr("property").toLowerCase();
-            if (property.startsWith("og:")) technologies.add("Open Graph");
-            if (property.startsWith("twitter:")) technologies.add("Twitter Cards");
-            if (property.contains("fb:app_id")) technologies.add("Facebook App");
+            properties.getPropertyDetectors().forEach((prefix, tech) -> {
+                if (property.contains(prefix)) technologies.add(tech);
+            });
         });
     }
 
@@ -234,7 +234,7 @@ public class TechScraperService {
     /** Extrai a cor do tema (theme-color). */
     private static String extractThemeColor(Document doc) {
         return doc.select("meta[name=theme-color]").stream()
-                .map(m -> m.attr("content").strip())
+                .map(m -> m.attr(ATTR_CONTENT).strip())
                 .filter(c -> !c.isBlank())
                 .findFirst().orElse(null);
     }
@@ -358,7 +358,7 @@ public class TechScraperService {
             List<String> mentions = new ArrayList<>();
 
             // URL completa com protocolo para extração em nameMentionUrls
-            String pageUrl = "https://" + domain;
+            String pageUrl = HTTPS_PREFIX + domain;
 
             // Verifica nome completo no texto da página (match exato com boundaries)
             if (nameMatchesExactly(pageText, name)) {
