@@ -33,6 +33,9 @@ graph TB
         SDS["SocialDiscoveryService<br/>Jsoup — 33 plataformas<br/>2 caches Caffeine"]
         RS["RdapService<br/>Identity Digital + Registro.br<br/>Cache Caffeine 1h"]
         OSS["OpenSerpSearch<br/>Cache L1 Caffeine + L2 Redis<br/>Circuit breaker + rate limit"]
+        OCB["OpenSerpCircuitBreaker<br/>3 CAPTCHAs → 5min cooldown"]
+        ORP["OpenSerpResponseParser<br/>JSON + texto/table"]
+        ORL["OpenSerpRateLimiter<br/>2s entre requisições"]
         RCS["RedisCacheService<br/>L2 distribuído<br/>Async set + fallback"]
         ES["EncryptionService<br/>AES-128-GCM"]
         DCS["DotComScrapingService<br/>Scraping .com/.com.br<br/>via OpenSERP URLs"]
@@ -83,6 +86,9 @@ graph TB
     DE --> SDS
     DE --> RS
 
+    OSS --> OCB
+    OSS --> ORP
+    OSS --> ORL
     OSS --> OSP
     RCS --> REDIS
 

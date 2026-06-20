@@ -22,7 +22,7 @@ info:
 
     Variáveis obrigatórias: `API_KEY`, `ENCRYPTION_SECRET`, `DB_URL`.
     Consulte [ADR-011](../docs/adr/ADR-011-environment-variables.md) para a lista completa.
-  version: "2.0"
+  version: "2.1"
   contact:
     name: "pdroti.solutions"
     url: "https://pdroti.solutions"

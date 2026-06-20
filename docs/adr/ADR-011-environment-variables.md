@@ -69,8 +69,8 @@ ENCRYPTION_SECRET=your-32-byte-encryption-secret-here
 | Grupo | Qtd | Exemplos |
 |---|---|---|
 | Servidor | 1 | `PORT` |
-| Banco/Pool | 7 | `DB_URL`, `HIKARI_MAX_POOL` |
-| Redis | 6 | `REDIS_HOST`, `REDIS_POOL_MAX` |
+| Banco/Pool | 7 | `DB_URL`, `HIKARI_MAX_POOL`, `HIKARI_IDLE_TIMEOUT` |
+| Redis | 6 | `REDIS_HOST`, `REDIS_POOL_MAX`, `REDIS_TIMEOUT` |
 | OpenSERP | 3 | `OPENSERP_API_URL` |
 | Segurança | 2 | `API_KEY`, `ENCRYPTION_SECRET` |
 | Tomcat | 2 | `TOMCAT_CONN_TIMEOUT` |
@@ -79,4 +79,5 @@ ENCRYPTION_SECRET=your-32-byte-encryption-secret-here
 | JPA | 1 | `DDL_AUTO` |
 | Tracing | 3 | `TRACING_ENABLED`, `TRACING_SAMPLING` |
 | Timing | 1 | `TIMING_FILTER_ENABLED` |
-| **Total** | **33** | |
+| Logging | 17 | `LOG_LEVEL_ROOT`, `LOG_LEVEL_APP` |
+| **Total** | **~50** | |

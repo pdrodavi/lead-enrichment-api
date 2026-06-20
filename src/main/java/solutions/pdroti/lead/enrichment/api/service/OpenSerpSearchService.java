@@ -48,16 +48,19 @@ import java.nio.charset.StandardCharsets;
  *   <li>ContentTracker — hash SHA-256 para detectar mudanças entre refetches</li>
  * </ul>
  * <p>
- * Resiliência:
+ * Resiliência (delegada para componentes especializados):
  * <ul>
- *   <li>CAPTCHA detection — erros 429 com {@code captcha_detected} são identificados</li>
- *   <li>Circuit breaker — após N captchas consecutivos, pausa por um período</li>
- *   <li>Rate limiting — delay mínimo de 2s entre requisições</li>
+ *   <li>{@link OpenSerpCircuitBreaker} — após 3 CAPTCHAs consecutivos, pausa por 5min</li>
+ *   <li>{@link OpenSerpRateLimiter} — delay mínimo de 2s entre requisições</li>
+ *   <li>{@link OpenSerpResponseParser} — parse de JSON e formato texto/table</li>
  *   <li>Proxy rotation — round-robin entre múltiplos endpoints OpenSERP</li>
  *   <li>Failover — se um endpoint falha, tenta o próximo automaticamente</li>
  * </ul>
  *
  * @see OpenSerpEnricher
+ * @see OpenSerpCircuitBreaker
+ * @see OpenSerpRateLimiter
+ * @see OpenSerpResponseParser
  * @see <a href="https://github.com/serpapi/open-serp">OpenSERP</a>
  */
 @Slf4j
