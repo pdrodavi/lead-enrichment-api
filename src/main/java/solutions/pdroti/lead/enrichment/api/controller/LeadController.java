@@ -54,6 +54,9 @@ public class LeadController {
     private final ObjectMapper objectMapper;
     private final CacheManager cacheManager;
 
+    private static final String ERROR_FIELD = "error";
+    private static final String ENRICH_CACHE = "enrich-result";
+
     /**
      * Enriquece um lead com dados do domínio (DNS, RDAP, tecnologias,
      * redes sociais) ou via OpenSERP se não houver domínio.
@@ -64,7 +67,7 @@ public class LeadController {
      * @return 200 com lista de leads do domínio, ou 400 se validação falhar
      */
     @PostMapping("/enrich")
-    @Cacheable(value = "enrich-result", key = "#request.email")
+    @Cacheable(value = ENRICH_CACHE, key = "#request.email")
     public ResponseEntity<List<LeadResponse>> enrichLead(@Valid @RequestBody LeadRequest request) {
         log.info("POST /enrich email={} name={} domain={}",
                 EmailUtils.mask(request.getEmail()), request.getName(), request.getDomain());
@@ -139,7 +142,7 @@ public class LeadController {
         // Evita cache stale: remove entrada do email ANTIGO antes de atualizar
         var oldLead = leadService.findById(id);
         oldLead.ifPresent(lead -> {
-            var cache = cacheManager.getCache("enrich-result");
+            var cache = cacheManager.getCache(ENRICH_CACHE);
             if (cache != null) {
                 cache.evict(lead.getEmail());
                 log.debug("Cache evict para email antigo: {}", EmailUtils.mask(lead.getEmail()));
@@ -149,7 +152,7 @@ public class LeadController {
         var updated = leadService.update(id, request.getEmail(), request.getDomain(), request.getName());
 
         // Remove entrada do novo email (o @CacheEvict foi removido intencionalmente)
-        var cache = cacheManager.getCache("enrich-result");
+        var cache = cacheManager.getCache(ENRICH_CACHE);
         if (cache != null) {
             cache.evict(request.getEmail());
         }
@@ -182,7 +185,7 @@ public class LeadController {
         // Evita cache stale: remove entrada do cache ANTES de deletar
         var oldLead = leadService.findById(id);
         oldLead.ifPresent(lead -> {
-            var cache = cacheManager.getCache("enrich-result");
+            var cache = cacheManager.getCache(ENRICH_CACHE);
             if (cache != null) {
                 cache.evict(lead.getEmail());
                 log.debug("Cache evict para email do lead deletado: {}", EmailUtils.mask(lead.getEmail()));
@@ -200,7 +203,7 @@ public class LeadController {
         }
         log.warn("DELETE /{} not found", id);
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "error", "Lead não encontrado",
+                ERROR_FIELD, "Lead não encontrado",
                 "id", id
         ));
     }

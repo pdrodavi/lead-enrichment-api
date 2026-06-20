@@ -1,7 +1,6 @@
 package solutions.pdroti.lead.enrichment.api.service;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import solutions.pdroti.lead.enrichment.api.model.Lead;
@@ -124,7 +123,6 @@ public class LeadService {
      * @param pageable parâmetros de paginação (page, size, sort)
      * @return página de leads ativos
      */
-    @Transactional(readOnly = true)
     public Page<Lead> listAll(Pageable pageable) {
         return leadRepository.findByStatus(DEFAULT_STATUS, pageable);
     }
@@ -136,7 +134,6 @@ public class LeadService {
      * @param pageable parâmetros de paginação (page, size, sort)
      * @return página de leads do domínio, ou página vazia se domain for inválido
      */
-    @Transactional(readOnly = true)
     public Page<Lead> findByDomain(String domain, Pageable pageable) {
         if (!StringUtils.hasText(domain)) return Page.empty();
         return leadRepository.findByDomainAndStatus(domain, DEFAULT_STATUS, pageable);
@@ -149,7 +146,6 @@ public class LeadService {
      * @param id identificador do lead em formato string
      * @return Optional com o lead encontrado, ou vazio se não existir ou estiver deletado
      */
-    @Transactional(readOnly = true)
     public Optional<Lead> findById(String id) {
         return LeadDeletionService.parseNumericId(id)
                 .flatMap(leadRepository::findById)

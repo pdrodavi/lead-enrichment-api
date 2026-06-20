@@ -27,6 +27,8 @@ import java.util.function.Consumer;
 @Slf4j
 public final class EnrichmentSnapshotManager {
 
+    private static final String LOG_RESTORE = "Campo '{}' restaurado do snapshot";
+
     private final Map<String, Object> snapshot;
 
     private EnrichmentSnapshotManager(Map<String, Object> snapshot) {
@@ -111,7 +113,7 @@ public final class EnrichmentSnapshotManager {
             String old = (String) snapshot.get(fieldName);
             if (old != null) {
                 setter.accept(old);
-                log.debug("Campo '{}' restaurado do snapshot", fieldName);
+                log.debug(LOG_RESTORE, fieldName);
             }
         }
     }
@@ -121,7 +123,7 @@ public final class EnrichmentSnapshotManager {
             LocalDateTime old = (LocalDateTime) snapshot.get(fieldName);
             if (old != null) {
                 setter.accept(old);
-                log.debug("Campo '{}' restaurado do snapshot", fieldName);
+                log.debug(LOG_RESTORE, fieldName);
             }
         }
     }
@@ -132,7 +134,7 @@ public final class EnrichmentSnapshotManager {
             List<String> old = (List<String>) snapshot.get(fieldName);
             if (old != null && !old.isEmpty()) {
                 setter.accept(old);
-                log.debug("Campo '{}' restaurado do snapshot", fieldName);
+                log.debug(LOG_RESTORE, fieldName);
             }
         }
     }

@@ -301,6 +301,11 @@ public class OpenSerpSearchService {
      */
     private boolean isCaptchaError(HttpClientErrorException e) {
         if (e.getStatusCode().value() != 429) return false;
+        return parseCaptchaErrorBody(e);
+    }
+
+    /** Verifica se o body da resposta HTTP 429 contém indicação de CAPTCHA. */
+    private boolean parseCaptchaErrorBody(HttpClientErrorException e) {
         try {
             String body = e.getResponseBodyAsString();
             if (body == null || body.isBlank()) return false;
