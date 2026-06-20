@@ -148,6 +148,10 @@ public class RdapService {
             }
             log.debug("RDAP {} retornou status {}", url, response.statusCode());
             return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.debug("RDAP {} interrompida: {}", url, e.getMessage());
+            return null;
         } catch (Exception e) {
             log.debug("Falha ao conectar em {}: {}", url, e.getMessage());
             return null;
@@ -309,7 +313,9 @@ public class RdapService {
                     }
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            // JSON malformado ou estrutura inesperada — retorna null
+        }
         return null;
     }
 
@@ -336,7 +342,9 @@ public class RdapService {
                     }
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            // JSON malformado ou evento ausente — retorna null
+        }
         return null;
     }
 

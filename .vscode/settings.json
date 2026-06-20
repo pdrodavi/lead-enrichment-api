@@ -4,5 +4,9 @@
         ".github/agents": true
     },
     "java.configuration.updateBuildConfiguration": "interactive",
-    "java.compile.nullAnalysis.mode": "disabled"
+    "java.compile.nullAnalysis.mode": "disabled",
+    "sonarlint.connectedMode.project": {
+        "connectionId": "pdrodavi",
+        "projectKey": "pdrodavi_lead-enrichment-api"
+    }
 }
