@@ -215,21 +215,49 @@ public class RdapService {
             List<String> roles = extractRoles(entity);
             String fn = extractFnFromVcard(entity);
 
-            if (roles.contains("registrar")) {
-                registrar = fn;
-                registrantEmail = findAbuseEmail(entity, registrantEmail);
-            }
-            if (roles.contains("registrant") || roles.contains("administrative")) {
-                if (registrantName == null) registrantName = fn;
-                if (registrantEmail == null) registrantEmail = findEmailFromEntity(entity, null);
-                if (taxpayerId == null) taxpayerId = extractTaxpayerId(entity);
-            }
-            if (roles.contains("technical")) {
-                if (registrantName == null) registrantName = fn;
-                if (registrantEmail == null) registrantEmail = findEmailFromEntity(entity, null);
-            }
+            registrar = applyRegistrarRole(registrar, roles, fn);
+            registrantName = applyRegistrantRole(registrantName, roles, fn);
+            registrantEmail = applyEmailRole(registrantEmail, entity, roles);
+            taxpayerId = applyTaxpayerRole(taxpayerId, entity, roles);
         }
         return new EntityData(registrar, registrantName, registrantEmail, taxpayerId);
+    }
+
+    private static final String ROLE_REGISTRAR = "registrar";
+    private static final String ROLE_REGISTRANT = "registrant";
+    private static final String ROLE_ADMINISTRATIVE = "administrative";
+    private static final String ROLE_TECHNICAL = "technical";
+
+    private String applyRegistrarRole(String registrar, List<String> roles, String fn) {
+        if (roles.contains(ROLE_REGISTRAR)) {
+            return fn;
+        }
+        return registrar;
+    }
+
+    private String applyRegistrantRole(String registrantName, List<String> roles, String fn) {
+        if (registrantName != null) return registrantName;
+        if (roles.contains(ROLE_REGISTRANT) || roles.contains(ROLE_ADMINISTRATIVE) || roles.contains(ROLE_TECHNICAL)) {
+            return fn;
+        }
+        return null;
+    }
+
+    private String applyEmailRole(String registrantEmail, JsonNode entity, List<String> roles) {
+        if (registrantEmail != null) return registrantEmail;
+        if (roles.contains(ROLE_REGISTRAR)) return findAbuseEmail(entity, null);
+        if (roles.contains(ROLE_REGISTRANT) || roles.contains(ROLE_ADMINISTRATIVE) || roles.contains(ROLE_TECHNICAL)) {
+            return findEmailFromEntity(entity, null);
+        }
+        return null;
+    }
+
+    private String applyTaxpayerRole(String taxpayerId, JsonNode entity, List<String> roles) {
+        if (taxpayerId != null) return taxpayerId;
+        if (roles.contains(ROLE_REGISTRANT) || roles.contains(ROLE_ADMINISTRATIVE)) {
+            return extractTaxpayerId(entity);
+        }
+        return null;
     }
 
     /** Extrai as roles de uma entidade RDAP. */
@@ -262,11 +290,6 @@ public class RdapService {
     private String findEmailFromEntity(JsonNode entity, String currentEmail) {
         if (currentEmail != null) return currentEmail;
         return extractEmailFromVcard(entity);
-    }
-
-    /** Retorna o primeiro valor não-null entre dois. */
-    private static <T> T updateIfNull(T current, T candidate) {
-        return current != null ? current : candidate;
     }
 
     /** Extrai CPF/CNPJ do Registro.br a partir dos publicIds. */

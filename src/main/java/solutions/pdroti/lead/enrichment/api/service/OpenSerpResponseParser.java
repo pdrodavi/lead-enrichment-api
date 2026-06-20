@@ -23,11 +23,11 @@ import java.util.regex.Pattern;
 @Component
 public class OpenSerpResponseParser {
 
-    private static final Pattern URL_LINE = Pattern.compile("^URL:\\s*(\\S.*)$", Pattern.MULTILINE);
+    /** Header de bloco no formato texto: [N] Título (domínio) */
+    private static final Pattern HEADER_LINE = Pattern.compile(
+            "^\\[(\\d+)\\] (.+) \\(([^)]+)\\)$");
 
-    private static final Pattern RESULT_BLOCK = Pattern.compile(
-            "^\\[(\\d+)\\]\\s+(.+?)\\s+\\(([^)]+)\\)$\\n?(.*?)(?=^\\[\\d+\\]|\\z)",
-            Pattern.MULTILINE | Pattern.DOTALL);
+    private static final Pattern URL_LINE = Pattern.compile("^URL:\\s*(\\S.*)$", Pattern.MULTILINE);
 
     /**
      * Interpreta a resposta bruta do OpenSERP e extrai um JsonArray de resultados.
@@ -79,27 +79,47 @@ public class OpenSerpResponseParser {
     /** Parseia a resposta em formato texto/table do OpenSERP. */
     private JsonArray parseText(String raw) {
         JsonArray results = new JsonArray();
-        Matcher matcher = RESULT_BLOCK.matcher(raw);
-        while (matcher.find()) {
-            String title = matcher.group(2).trim();
-            String domain = matcher.group(3).trim();
-            String body = matcher.group(4) != null ? matcher.group(4).trim() : "";
+        String[] lines = raw.split("\\n");
+        StringBuilder body = new StringBuilder();
+        String currentTitle = null;
+        String currentDomain = null;
 
-            String url = "";
-            String snippet = body;
-            Matcher urlMatcher = URL_LINE.matcher(body);
-            if (urlMatcher.find()) {
-                url = urlMatcher.group(1).trim();
-                snippet = body.substring(0, urlMatcher.start()).trim();
+        for (String line : lines) {
+            Matcher headerMatcher = HEADER_LINE.matcher(line);
+            if (headerMatcher.find()) {
+                // Finaliza bloco anterior
+                if (currentTitle != null) {
+                    addTextResult(results, currentTitle, currentDomain, body.toString());
+                }
+                currentTitle = headerMatcher.group(2).trim();
+                currentDomain = headerMatcher.group(3).trim();
+                body = new StringBuilder();
+            } else if (currentTitle != null) {
+                // Linha de corpo do bloco atual
+                if (body.length() > 0) body.append("\n");
+                body.append(line);
             }
-
-            JsonObject item = new JsonObject();
-            item.add("title", new JsonPrimitive(title));
-            item.add("url", new JsonPrimitive(url));
-            item.add("snippet", new JsonPrimitive(snippet));
-            item.add("domain", new JsonPrimitive(domain));
-            results.add(item);
+        }
+        // Último bloco
+        if (currentTitle != null) {
+            addTextResult(results, currentTitle, currentDomain, body.toString());
         }
         return results;
+    }
+
+    private void addTextResult(JsonArray results, String title, String domain, String body) {
+        String url = "";
+        String snippet = body.trim();
+        Matcher urlMatcher = URL_LINE.matcher(body);
+        if (urlMatcher.find()) {
+            url = urlMatcher.group(1).trim();
+            snippet = body.substring(0, urlMatcher.start()).trim();
+        }
+        JsonObject item = new JsonObject();
+        item.add("title", new JsonPrimitive(title));
+        item.add("url", new JsonPrimitive(url));
+        item.add("snippet", new JsonPrimitive(snippet));
+        item.add("domain", new JsonPrimitive(domain));
+        results.add(item);
     }
 }
