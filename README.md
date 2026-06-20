@@ -40,8 +40,10 @@ Registro formal de decisões arquiteturais com contexto, alternativas considerad
 | [ADR-008](./docs/adr/ADR-008-mascaramento-dados-lgpd.md) | `EmailUtils` com mascaramento centralizado em logs e respostas | Privacidade de dados |
 | [ADR-009](./docs/adr/ADR-009-tratamento-global-erros.md) | `@RestControllerAdvice` com resposta JSON padronizada | Tratamento de erros |
 | [ADR-010](./docs/adr/ADR-010-configuracao-externalizada.md) | `@ConfigurationProperties` para módulos TechScraper, SocialDiscovery e OpenSerpProxy | Configuração externalizada |
+| [ADR-011](./docs/adr/ADR-011-environment-variables.md) | 33 variáveis de ambiente, `.env`/`.env.example`, `@PostConstruct` fail-fast | Segurança |
+| [ADR-012](./docs/adr/ADR-012-openserp-refactoring.md) | Extração de `OpenSerpCircuitBreaker`, `OpenSerpResponseParser`, `OpenSerpRateLimiter` | Refatoração |
 
-> Para arquitetos, recomenda-se iniciar pelos **ADRs 001, 003, 006 e 008**, que definem as decisões estruturais mais relevantes.
+> Para arquitetos, recomenda-se iniciar pelos **ADRs 001, 003, 006, 008, 011 e 012**, que definem as decisões estruturais mais relevantes.
 
 ---
 
@@ -62,7 +64,10 @@ Diagramas em Mermaid com renderização nativa no GitHub e no VS Code.
 Aprimoramentos implementados ao longo de ciclos de revisão, organizados por domínio arquitetural:
 
 ### Segurança
-- Credenciais externalizadas para `.env` (remoção de valores hard-coded)
+- **33 variáveis de ambiente** externalizadas para `.env` (remoção de valores hard-coded)
+- **Fail-fast**: `@PostConstruct` em `ApiKeyFilter` e `EncryptionService` — aplicação não inicia sem credenciais
+- **`.env.example`** como template completo e versionado
+- **Logging levels externalizados** via `${LOG_LEVEL_*}` (17 níveis configuráveis sem rebuild)
 - Criptografia AES-128-GCM sem fallback e com log + throw em falha de descriptografia
 - Autenticação por API Key via Servlet Filter com validação de header
 
@@ -81,6 +86,7 @@ Aprimoramentos implementados ao longo de ciclos de revisão, organizados por dom
 
 ### Refatoração da Arquitetura
 - Extração de responsabilidades: `LeadService` decomposto em `OpenSerpEnricher`, `DomainEnricher`, `LeadDeletionService`, `RedisCacheService` e `DataParser`
+- **`OpenSerpSearchService` decomposto em 3 classes**: `OpenSerpCircuitBreaker`, `OpenSerpResponseParser`, `OpenSerpRateLimiter` — eliminou ~200 linhas de código duplicado
 - Eliminação de N+1 com `@Fetch(FetchMode.SUBSELECT)`, lock otimista com `@Version` e `@BatchSize`
 
 ### Manutenibilidade

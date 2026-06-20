@@ -22,8 +22,10 @@ import java.io.IOException;
  * </pre>
  */
 @Slf4j
-//@Component
-//@Order(1)
+@Component
+@Order(1)
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+    name = "app.timing-filter.enabled", havingValue = "true", matchIfMissing = false)
 public class TimingFilter extends OncePerRequestFilter {
 
     @Override

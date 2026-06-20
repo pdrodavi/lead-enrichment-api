@@ -14,7 +14,15 @@ info:
     - E-mails e telefones expostos publicamente e menções ao nome
 
     Todos os endpoints (exceto actuator e Swagger) exigem autenticação via header `X-API-KEY`.
-  version: "1.0"
+
+    ## Configuração
+
+    Todas as credenciais e parâmetros de infraestrutura são configurados via variáveis de ambiente
+    (33 no total). Use `.env.example` como template — nunca commitar `.env` com credenciais reais.
+
+    Variáveis obrigatórias: `API_KEY`, `ENCRYPTION_SECRET`, `DB_URL`.
+    Consulte [ADR-011](../docs/adr/ADR-011-environment-variables.md) para a lista completa.
+  version: "2.1"
   contact:
     name: "pdroti.solutions"
     url: "https://pdroti.solutions"

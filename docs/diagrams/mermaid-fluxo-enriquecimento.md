@@ -132,6 +132,11 @@ graph TB
             SDS[SocialDiscoveryService]
             RS[RdapService]
             OSS[OpenSerpSearch]
+            OCB[OpenSerpCircuitBreaker]
+            ORP[OpenSerpResponseParser]
+            ORL[OpenSerpRateLimiter]
+            DCS[DotComScrapingService]
+            ESM[EnrichmentSnapshotManager]
             SERR[ScrapeError]
         end
         subgraph "util"
@@ -147,12 +152,14 @@ graph TB
     LS --> LDS
     LS --> DP
     LS --> EU
+    LS --> ESM
     OSE --> OSS
     OSE --> SDS
     DE --> DNS
     DE --> TSS
     DE --> SDS
     DE --> RS
+    DE --> DCS
     LREPO --> L
     
     classDef package fill:#e7f5ff,stroke:#1971c2,stroke-width:1px
