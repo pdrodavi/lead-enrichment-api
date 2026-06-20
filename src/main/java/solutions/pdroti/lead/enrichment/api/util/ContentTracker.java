@@ -38,6 +38,14 @@ public final class ContentTracker {
                 }
             });
 
+    /**
+     * Remove o {@code MessageDigest} da thread atual para evitar
+     * memory leak em ambientes com pool de threads.
+     */
+    public static void cleanupDigest() {
+        DIGEST.remove();
+    }
+
     private final Cache<String, String> hashCache;
     private final String sourceName;
 

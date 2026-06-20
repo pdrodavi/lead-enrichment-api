@@ -120,9 +120,12 @@ public class TechScraperService {
         detectByMetaProperties(doc, technologies);
     }
 
+    private static final String HTTPS_PREFIX = "https://";
+    private static final String ATTR_CONTENT = "content";
+
     /** Garante scheme https se ausente. */
     private static String normalizeUrl(String domain) {
-        return domain.startsWith("http") ? domain : "https://" + domain;
+        return domain.startsWith("http") ? domain : HTTPS_PREFIX + domain;
     }
 
     /** Faz o fetch da página com timeout e User-Agent configurados. */
@@ -161,7 +164,7 @@ public class TechScraperService {
     private void detectByMetaTags(Document doc, Set<String> technologies) {
         doc.select("meta[name]").forEach(meta -> {
             String name = meta.attr("name").toLowerCase();
-            String content = meta.attr("content").toLowerCase();
+            String content = meta.attr(ATTR_CONTENT).toLowerCase();
 
             if ("generator".equals(name)) {
                 properties.getMetaGenerators().forEach((key, tech) -> {
@@ -198,7 +201,7 @@ public class TechScraperService {
     /** Extrai a meta description. */
     private static String extractMetaDescription(Document doc) {
         return doc.select("meta[name=description]").stream()
-                .map(m -> m.attr("content").strip())
+                .map(m -> m.attr(ATTR_CONTENT).strip())
                 .filter(c -> !c.isBlank())
                 .findFirst().orElse(null);
     }
@@ -243,7 +246,7 @@ public class TechScraperService {
                 .filter(c -> !c.isBlank())
                 .findFirst()
                 .orElseGet(() -> doc.select("meta[http-equiv=Content-Type]").stream()
-                        .map(m -> m.attr("content"))
+                        .map(m -> m.attr(ATTR_CONTENT))
                         .filter(c -> c.contains("charset="))
                         .map(c -> c.substring(c.indexOf("charset=") + 8).strip())
                         .findFirst().orElse(null));
@@ -254,8 +257,8 @@ public class TechScraperService {
         Map<String, String> og = new LinkedHashMap<>();
         doc.select("meta[property^=og:]").forEach(meta -> {
             String property = meta.attr("property").toLowerCase();
-            String content = meta.attr("content").strip();
-            if (!content.isBlank()) og.put(property, content);
+            String val = meta.attr(ATTR_CONTENT).strip();
+            if (!val.isBlank()) og.put(property, val);
         });
         return og;
     }
@@ -265,8 +268,8 @@ public class TechScraperService {
         Map<String, String> tc = new LinkedHashMap<>();
         doc.select("meta[name^=twitter:]").forEach(meta -> {
             String name = meta.attr("name").toLowerCase();
-            String content = meta.attr("content").strip();
-            if (!content.isBlank()) tc.put(name, content);
+            String val = meta.attr(ATTR_CONTENT).strip();
+            if (!val.isBlank()) tc.put(name, val);
         });
         return tc;
     }
@@ -308,7 +311,7 @@ public class TechScraperService {
 
             if (name != null && !name.isBlank()) {
                 String pageText = doc.text();
-                String pageUrl = "https://" + domain;
+                String pageUrl = HTTPS_PREFIX + domain;
 
                 if (nameMatchesExactly(pageText, name)) {
                     nameMentions.add("Nome completo encontrado em: " + pageUrl);

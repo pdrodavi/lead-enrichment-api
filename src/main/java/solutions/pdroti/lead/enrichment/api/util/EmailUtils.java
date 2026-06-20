@@ -38,6 +38,14 @@ public class EmailUtils {
     });
 
     /**
+     * Remove o {@code MessageDigest} da thread atual para evitar
+     * memory leak em ambientes com pool de threads.
+     */
+    public static void cleanupDigest() {
+        DIGEST_CACHE.remove();
+    }
+
+    /**
      * Ofusca um e-mail para exibição segura (LGPD).
      * <p>
      * Mantém visíveis apenas os primeiros 3 caracteres do local-part
