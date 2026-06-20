@@ -113,11 +113,11 @@ public class OpenSerpSearchService {
 
     public OpenSerpSearchService(
             OpenSerpProxyProperties proxyProperties,
-            @Qualifier("openSerpRestTemplate") RestTemplate restTemplate,
+            RestTemplate openSerpRestTemplate,
             Cache<String, JsonArray> openSerpCache,
             Cache<String, String> openSerpHashCache,
             RedisCacheService redisCacheService) {
-        this.restTemplate = restTemplate;
+        this.restTemplate = openSerpRestTemplate;
         this.gson = new GsonBuilder().setStrictness(Strictness.LENIENT).create();
         this.openSerpCache = openSerpCache;
         this.contentTracker = new ContentTracker(openSerpHashCache, "OpenSERP");
